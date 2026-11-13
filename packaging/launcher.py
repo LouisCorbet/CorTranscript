@@ -44,6 +44,7 @@ def runtime_environment(bundle, data):
         'CORTRANSCRIPT_DESKTOP': '1',
         'WHISPER_MODEL': str(bundle / 'models' / 'whisper'),
         'WHISPER_LANGUAGE': 'fr', 'WHISPER_DEVICE': 'cpu',
+        'CUDA_VISIBLE_DEVICES': '-1',
         'WHISPER_COMPUTE_TYPE': 'int8', 'WHISPER_BEAM_CHUNKS': '5',
         'AUDIO_DIR': str(data / 'audio'), 'TRANSCRIPTIONS_DIR': str(data / 'transcriptions'),
         'SHERPA_MODEL_DIR': str(bundle / 'models' / 'sherpa'),

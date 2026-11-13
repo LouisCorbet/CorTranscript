@@ -30,7 +30,7 @@ if ($env:OS -ne 'Windows_NT') { throw 'La construction du .exe doit être effect
 # Fail before downloading models if a prerequisite is missing.
 $python = (& py -3.11 -c 'import sys; print(sys.executable)')
 if ($LASTEXITCODE -ne 0) { throw 'Installe Python 3.11 x64 depuis python.org (avec le lanceur py).' }
-Invoke-Checked $python @('-c', 'import struct; assert struct.calcsize("P") == 8, "Python x64 requis"')
+Invoke-Checked $python @('-c', "import struct; assert struct.calcsize('P') == 8, 'Python x64 requis'")
 if (-not $InnoSetupCompiler) {
     $candidates = @(
         "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
