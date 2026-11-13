@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '1.0.0',
     [ValidateSet('tiny', 'base', 'small', 'medium', 'large-v3')][string]$Model = 'small',
@@ -76,7 +76,7 @@ $ffmpegExtract = Join-Path $buildRoot 'ffmpeg'
 if (Test-Path -LiteralPath $ffmpegExtract) { Remove-Item -LiteralPath $ffmpegExtract -Recurse -Force }
 Expand-Archive -LiteralPath $ffmpegZip -DestinationPath $ffmpegExtract
 $ffmpegBin = Get-ChildItem -LiteralPath $ffmpegExtract -Recurse -Filter 'ffmpeg.exe' | Select-Object -First 1
-if (-not $ffmpegBin) { throw 'ffmpeg.exe absent de l’archive.' }
+if (-not $ffmpegBin) { throw "ffmpeg.exe absent de l'archive." }
 Copy-Item -Path (Join-Path $ffmpegBin.Directory.FullName '*') -Destination "$bundle\bin" -Recurse
 Copy-Item -LiteralPath $ffmpegBin.Directory.Parent.FullName -Destination "$bundle\licenses\ffmpeg-distribution" -Recurse
 # The duplicate binary directory is unnecessary; keep the distributor's license,
@@ -116,6 +116,6 @@ if ($LASTEXITCODE -ne 0) { throw 'Impossible de créer le manifeste des dépenda
 Write-Host '[6/7] Démarrage et test des trois moteurs et de la réduction de bruit.'
 Invoke-Checked $buildPython @("$projectRoot\packaging\launcher.py", '--smoke-test')
 
-Write-Host '[7/7] Création de l’installateur.'
+Write-Host "[7/7] Création de l'installateur."
 Invoke-Checked $InnoSetupCompiler @("/DAppVersion=$Version", "/DBundleDir=$bundle", "/DOutputDir=$output", "$projectRoot\packaging\CorTranscript.iss")
 Write-Host "Terminé : $output\CorTranscript-Setup-$Version.exe"
