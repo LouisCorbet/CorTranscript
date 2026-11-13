@@ -1,0 +1,1203 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Transcription</title>
+<style>
+  :root {
+    --bg: #0a0e1a;
+    --surface: #121829;
+    --surface-2: #1a2138;
+    --border: #252e4a;
+    --text: #e8ebf7;
+    --muted: #8a93b2;
+    --accent: #7c6cf7;
+    --accent-2: #4f9cf9;
+    --danger: #ef4444;
+    --ok: #22c55e;
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body {
+    margin: 0; min-height: 100vh;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    color: var(--text);
+    background:
+      radial-gradient(900px 500px at 15% -10%, rgba(124,108,247,.18), transparent 60%),
+      radial-gradient(800px 480px at 100% 0%, rgba(79,156,249,.14), transparent 60%),
+      var(--bg);
+  }
+  main { max-width: 780px; margin: 0 auto; padding: 2rem 1.2rem 3rem; }
+
+  header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1.2rem; }
+  h1 { margin: 0; font-size: 1.5rem; font-weight: 700; letter-spacing: -.02em; }
+  h1 span { background: linear-gradient(90deg, var(--accent), var(--accent-2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+
+  .pill { display: inline-flex; align-items: center; gap: .5rem; padding: .35rem .8rem; border-radius: 999px;
+          background: var(--surface); border: 1px solid var(--border); font-size: .85rem; color: var(--muted); }
+  .pill .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .pill.live { color: var(--text); }
+  .pill.live .dot { background: var(--danger); animation: pulse 1.2s infinite; }
+  .pill.error .dot { background: var(--danger); }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(239,68,68,.6); } 100% { box-shadow: 0 0 0 9px rgba(239,68,68,0); } }
+
+  .tabs { display: flex; gap: 4px; padding: 4px; margin-bottom: 1.2rem; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; }
+  .tab { flex: 1; font: inherit; font-weight: 600; padding: .6rem .8rem; border: 0; border-radius: 9px; background: transparent; color: var(--muted); cursor: pointer; transition: .15s; }
+  .tab:hover { color: var(--text); }
+  .tab.active { background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #fff; }
+
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+          padding: 1.1rem 1.2rem; margin-bottom: 1rem; }
+  .card h2 { margin: 0 0 .9rem; font-size: .75rem; text-transform: uppercase; letter-spacing: .09em; color: var(--muted); font-weight: 600; }
+
+  .seg { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; background: var(--bg); border: 1px solid var(--border); border-radius: 11px; }
+  .seg.four { grid-template-columns: repeat(4, 1fr); }
+  .seg input { position: absolute; opacity: 0; pointer-events: none; }
+  .seg label { text-align: center; padding: .55rem .6rem; border-radius: 8px; cursor: pointer; color: var(--muted); font-size: .92rem; transition: .15s; }
+  .seg input:checked + label { background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #fff; font-weight: 600; }
+  .seg input:disabled + label { cursor: not-allowed; opacity: .55; }
+
+  select, input[type=number] { padding: .65rem .8rem; font-size: .95rem; color: var(--text); font-family: inherit;
+           background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; outline: none; }
+  select { width: 100%; }
+  select:focus, input[type=number]:focus { border-color: var(--accent); }
+  select:disabled, input:disabled { opacity: .55; }
+  #device { margin-top: .8rem; }
+
+  .test { display: flex; align-items: center; gap: .9rem; margin-top: .9rem; }
+  .meter { position: relative; flex: 1; height: 10px; background: var(--bg); border: 1px solid var(--border); border-radius: 999px; overflow: hidden; }
+  .bar { height: 100%; width: 0; background: linear-gradient(90deg, var(--ok), #a3e635 70%, #facc15); transition: width .06s linear; }
+  .tick { position: absolute; top: 0; bottom: 0; left: 4%; width: 2px; background: #fff; opacity: .55; }
+  .hint { margin: .8rem 0 0; font-size: .85rem; color: var(--muted); line-height: 1.45; }
+
+  .btn { font: inherit; font-weight: 600; border: 0; border-radius: 11px; padding: .65rem 1.2rem; cursor: pointer; color: #fff; transition: .15s; }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .btn.small { padding: .35rem .75rem; font-size: .85rem; }
+  .btn.ghost { background: var(--surface-2); border: 1px solid var(--border); color: var(--text); }
+  .btn.ghost:hover:not(:disabled) { border-color: var(--accent); }
+  .btn.primary { background: linear-gradient(135deg, var(--accent), var(--accent-2)); box-shadow: 0 8px 24px rgba(124,108,247,.35); }
+  .btn.primary:hover:not(:disabled) { transform: translateY(-1px); }
+  .btn.primary.rec { background: linear-gradient(135deg, #ef4444, #f97316); box-shadow: 0 8px 24px rgba(239,68,68,.35); }
+  .card .btn.ghost.wide { margin-top: 1rem; }
+
+  .icon-btn { background: none; border: 0; color: var(--muted); font-size: 1.05rem; cursor: pointer; border-radius: 8px; padding: .3rem .6rem; }
+  .icon-btn:hover { color: var(--text); background: var(--surface-2); }
+  .icon-btn.del:hover { color: #fca5a5; }
+
+  .switch-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; cursor: pointer; }
+  .switch-row strong { display: block; font-size: .98rem; }
+  .switch-row small { display: block; margin-top: .2rem; color: var(--muted); font-size: .82rem; line-height: 1.4; }
+  .switch { position: relative; flex: none; width: 46px; height: 26px; }
+  .switch input { position: absolute; inset: 0; opacity: 0; cursor: pointer; margin: 0; }
+  .slider { position: absolute; inset: 0; background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px; transition: .2s; pointer-events: none; }
+  .slider::before { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: var(--muted); transition: .2s; }
+  .switch input:checked + .slider { background: linear-gradient(135deg, var(--accent), var(--accent-2)); border-color: transparent; }
+  .switch input:checked + .slider::before { transform: translateX(20px); background: #fff; }
+  .switch input:disabled + .slider { opacity: .45; }
+
+  .controls { display: flex; align-items: center; gap: 1rem; margin: 1.3rem 0; flex-wrap: wrap; }
+  .controls .btn.primary { padding: .85rem 1.6rem; font-size: 1.02rem; }
+  .status { color: var(--muted); font-size: .9rem; }
+  .status.err { color: #fca5a5; }
+
+  #out { min-height: 240px; max-height: 50vh; overflow-y: auto; overflow-x: hidden; overflow-wrap: anywhere; line-height: 1.7; font-size: 1.05rem; }
+  #final, #partial { white-space: pre-wrap; }
+  #empty { color: var(--muted); font-style: italic; }
+  #partial { color: var(--muted); user-select: none; }
+  #final { outline: none; border-radius: 8px; transition: background .15s; }
+  #final, #partial, #empty { padding: 0 .35rem; }
+  #final[contenteditable="true"]:hover { background: rgba(255,255,255,.03); }
+  #final[contenteditable="true"]:focus { background: var(--surface-2); box-shadow: 0 0 0 1px var(--accent); }
+  #final > div { min-height: 1.7em; }
+  .save-state { font-size: .8rem; color: var(--muted); }
+  .save-state.err { color: #fca5a5; }
+
+  /* ---- page « par morceaux » ---- */
+  .dur-row { display: flex; align-items: center; gap: .7rem; margin-top: .8rem; }
+  .dur-row input { width: 110px; }
+  .dur-row span { color: var(--muted); font-size: .9rem; }
+  .list-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: .8rem; }
+  .list-head h2 { margin: 0; }
+  ul.audios { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: .5rem; }
+  .audio, .rec-item { display: flex; align-items: center; gap: .8rem; padding: .65rem .75rem; background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; }
+  .rec-item { margin-bottom: .5rem; border-color: rgba(239,68,68,.45); flex-direction: column; align-items: stretch; gap: .45rem; }
+  .audio .info { flex: 1; min-width: 0; }
+  .audio .title { font-size: .95rem; }
+  .audio .chk { color: var(--ok); margin-left: .6rem; font-weight: 700; }
+  .audio .sub { margin-top: .3rem; font-size: .82rem; color: var(--muted); }
+  .audio .sub.err { color: #fca5a5; }
+  .audio.done .title { color: var(--muted); }
+  .seekrow { display: flex; align-items: center; gap: .55rem; margin-top: .45rem; }
+  .seekrow span { font-size: .78rem; color: var(--muted); font-variant-numeric: tabular-nums; min-width: 2.3rem; }
+  .seekrow span:last-child { text-align: right; }
+  input[type=range].seek { flex: 1; min-width: 0; -webkit-appearance: none; appearance: none; height: 8px; padding: 0; border-radius: 999px; cursor: pointer; outline: none;
+    border: 1px solid var(--border); background: linear-gradient(90deg, var(--accent) var(--p, 0%), var(--bg) var(--p, 0%)); }
+  input[type=range].seek::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; border: 0; background: #fff; box-shadow: 0 0 0 2px var(--accent); }
+  input[type=range].seek::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; border: 0; background: #fff; box-shadow: 0 0 0 2px var(--accent); }
+  .prog { height: 8px; background: var(--bg); border: 1px solid var(--border); border-radius: 999px; overflow: hidden; margin-top: .45rem; }
+  .rec-item .prog { margin-top: 0; }
+  .fill { height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transition: width .3s; }
+  .rec-item .fill { background: linear-gradient(90deg, #ef4444, #f97316); transition: width .25s linear; }
+  .prog.indet .fill { width: 40% !important; animation: slide 1.1s infinite ease-in-out; }
+  @keyframes slide { 0% { margin-left: -40%; } 100% { margin-left: 100%; } }
+  .rec-label { font-size: .88rem; display: flex; justify-content: space-between; gap: 1rem; }
+  .rec-label span:last-child { color: var(--muted); }
+  .empty-list { color: var(--muted); font-style: italic; font-size: .92rem; margin: .4rem 0; }
+
+  /* ---- page « visualiser » ---- */
+  .vplayer-wrap { position: sticky; top: 0; z-index: 5; padding: .7rem 0; margin-bottom: .6rem; background: linear-gradient(var(--bg) 75%, transparent); }
+  audio { width: 100%; color-scheme: dark; }
+  .block { padding: .9rem 0; border-top: 1px solid var(--border); }
+  .block:first-child { border-top: 0; padding-top: 0; }
+  .block-head { display: flex; align-items: center; gap: .6rem; margin-bottom: .45rem; color: var(--muted); font-size: .85rem; }
+  .words { line-height: 1.95; font-size: 1.05rem; }
+  .w { cursor: pointer; border-radius: 5px; padding: 0 2px; transition: background .1s; }
+  .w:hover { background: var(--surface-2); }
+  .w.active { background: var(--accent); color: #fff; }
+  .nosound .w { cursor: default; }
+  .nosound .w:hover { background: none; }
+  .no-speech { color: var(--muted); font-style: italic; }
+
+  /* ---- modale ---- */
+  dialog { width: min(520px, calc(100vw - 2rem)); padding: 1.3rem 1.4rem; color: var(--text); background: var(--surface);
+           border: 1px solid var(--border); border-radius: 18px; box-shadow: 0 30px 80px rgba(0,0,0,.6); }
+  dialog::backdrop { background: rgba(5,8,18,.72); backdrop-filter: blur(4px); }
+  .modal-head { display: flex; align-items: center; justify-content: space-between; }
+  .modal-head h3 { margin: 0; font-size: 1.15rem; letter-spacing: -.01em; }
+  .rec-row { display: flex; align-items: center; gap: .9rem; margin: 1rem 0 .4rem; }
+  .timer { font-variant-numeric: tabular-nums; color: var(--muted); min-width: 2.8rem; }
+  #mresult { margin-top: 1rem; }
+  #mresult audio { margin-top: .9rem; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Transcription <span>audio</span></h1>
+    <div id="pill" class="pill"><span class="dot"></span><span id="pillText">Prêt</span></div>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab active" data-page="live">Live</button>
+    <button class="tab" data-page="chunks">Par morceaux</button>
+    <button class="tab" data-page="viewer">Transcriptions</button>
+  </nav>
+
+  <!-- Cartes partagées par les pages « Live » et « Par morceaux » -->
+  <div id="shared">
+    <section class="card">
+      <h2>Entrée audio</h2>
+      <div class="seg" role="radiogroup" aria-label="Source audio">
+        <input type="radio" name="source" id="src-mic" value="mic" checked><label for="src-mic">Micro</label>
+        <input type="radio" name="source" id="src-system" value="system"><label for="src-system">Son de l'ordinateur</label>
+      </div>
+      <select id="device" aria-label="Micro"></select>
+      <div class="test">
+        <button id="test" class="btn ghost">Tester</button>
+        <div class="meter"><div id="bar" class="bar"></div><div class="tick" title="Seuil de détection de la parole"></div></div>
+      </div>
+      <p id="hint" class="hint"></p>
+    </section>
+
+    <section class="card">
+      <h2>Traitement</h2>
+      <label class="switch-row">
+        <span>
+          <strong>Réduction de bruit</strong>
+          <small id="denoiseNote"></small>
+        </span>
+        <span class="switch"><input type="checkbox" id="denoise"><span class="slider"></span></span>
+      </label>
+      <button id="openModal" class="btn ghost wide">Comparer avec / sans traitement</button>
+    </section>
+  </div>
+
+  <!-- ===================== PAGE 1 : LIVE ===================== -->
+  <section id="page-live" class="page">
+    <section class="card">
+      <h2>Moteur de transcription</h2>
+      <select id="engine" aria-label="Moteur de transcription"></select>
+      <p id="engineNote" class="hint"></p>
+    </section>
+
+    <div class="controls">
+      <button id="btn" class="btn primary">Démarrer</button>
+      <span id="status" class="status"></span>
+    </div>
+
+    <section class="card">
+      <div class="list-head"><h2>Transcription</h2><span id="saveState" class="save-state"></span></div>
+      <div id="out"><span id="empty">La transcription apparaîtra ici…</span><div id="final" contenteditable="false" spellcheck="true" lang="fr" role="textbox" aria-multiline="true" aria-label="Texte transcrit, modifiable"></div><div id="partial"></div></div>
+      <p class="hint">Le texte en blanc est modifiable : tes corrections sont enregistrées dans le fichier texte. Le texte grisé est en cours de transcription et ne se modifie pas.</p>
+    </section>
+  </section>
+
+  <!-- ===================== PAGE 2 : PAR MORCEAUX ===================== -->
+  <section id="page-chunks" class="page" hidden>
+    <section class="card">
+      <h2>Durée des enregistrements</h2>
+      <div class="seg four" role="radiogroup" aria-label="Durée">
+        <input type="radio" name="dur" id="dur-1" value="1" checked><label for="dur-1">1 min</label>
+        <input type="radio" name="dur" id="dur-5" value="5"><label for="dur-5">5 min</label>
+        <input type="radio" name="dur" id="dur-10" value="10"><label for="dur-10">10 min</label>
+        <input type="radio" name="dur" id="dur-c" value="custom"><label for="dur-c">Autre</label>
+      </div>
+      <div class="dur-row" id="durRow" hidden>
+        <input type="number" id="durCustom" min="0.5" step="0.5" value="2">
+        <span>minutes</span>
+      </div>
+      <p class="hint">Chaque morceau est coupé à la première pause qui suit la durée choisie, pour ne pas couper un mot.</p>
+    </section>
+
+    <div class="controls">
+      <button id="recBtn" class="btn primary">Enregistrer</button>
+      <button id="trBtn" class="btn primary" disabled>Transcrire</button>
+      <span id="cstatus" class="status"></span>
+    </div>
+    <p id="sessionInfo" class="hint" style="margin-top:-.6rem"></p>
+
+    <section class="card">
+      <div class="list-head">
+        <h2 id="listTitle">Audios</h2>
+        <button id="toggleDone" class="btn ghost small">Afficher les audios transcrits</button>
+      </div>
+      <div id="recItem" class="rec-item" hidden>
+        <div class="rec-label"><span id="recLabel">Enregistrement en cours…</span><span id="recTime">0:00</span></div>
+        <div class="prog"><div id="recFill" class="fill"></div></div>
+      </div>
+      <ul id="audioList" class="audios"></ul>
+      <p id="listEmpty" class="empty-list">Aucun audio pour l'instant.</p>
+    </section>
+  </section>
+
+  <!-- ===================== PAGE 3 : TRANSCRIPTIONS ===================== -->
+  <section id="page-viewer" class="page" hidden>
+    <section class="card">
+      <h2>Session de transcription</h2>
+      <select id="sessionSel" aria-label="Session"></select>
+      <p id="viewerInfo" class="hint"></p>
+    </section>
+    <div class="vplayer-wrap"><audio id="vplayer" controls></audio></div>
+    <section class="card" id="blocks"></section>
+  </section>
+</main>
+
+<dialog id="modal">
+  <div class="modal-head">
+    <h3>Comparer avec / sans traitement</h3>
+    <button id="mclose" class="icon-btn" aria-label="Fermer">✕</button>
+  </div>
+  <p class="hint" id="msource"></p>
+  <div class="rec-row">
+    <button id="mrec" class="btn primary">Enregistrer</button>
+    <span id="mtime" class="timer">0:00</span>
+    <div class="meter"><div id="mbar" class="bar"></div></div>
+  </div>
+  <div id="mresult" hidden>
+    <div class="seg" role="radiogroup" aria-label="Version à écouter">
+      <input type="radio" name="ab" id="ab-orig" value="orig" checked><label for="ab-orig">Original</label>
+      <input type="radio" name="ab" id="ab-clean" value="clean" disabled><label for="ab-clean">Traité</label>
+    </div>
+    <audio id="player" controls></audio>
+  </div>
+  <p id="mstatus" class="hint"></p>
+</dialog>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const fmtTime = (s) => { s = Math.max(0, Math.floor(s)); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); };
+const wsUrl = (path) => (location.protocol === "https:" ? "wss://" : "ws://") + location.host + path;
+const jget = async (url) => { const r = await fetch(url); if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); };
+const jpost = (url, body) => fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+
+function idToDate(id) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-(\d{2})/.exec(id || "");
+  if (!m) return id;
+  const d = new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]);
+  return d.toLocaleString("fr-FR", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
+// ---------- éléments ----------
+const tabs = [...document.querySelectorAll(".tab")];
+const sourceRadios = [...document.querySelectorAll('input[name="source"]')];
+const deviceEl = $("device"), testBtn = $("test"), bar = $("bar"), hint = $("hint");
+const denoiseEl = $("denoise"), denoiseNote = $("denoiseNote"), openModalBtn = $("openModal");
+const pill = $("pill"), pillText = $("pillText");
+// live
+const engineEl = $("engine"), engineNote = $("engineNote");
+const btn = $("btn"), statusEl = $("status"), outEl = $("out"), emptyEl = $("empty"), finalEl = $("final"), partialEl = $("partial"), saveStateEl = $("saveState");
+// par morceaux
+const durRadios = [...document.querySelectorAll('input[name="dur"]')], durCustom = $("durCustom"), durRow = $("durRow");
+const recBtn = $("recBtn"), trBtn = $("trBtn"), cstatus = $("cstatus"), sessionInfo = $("sessionInfo");
+const recItem = $("recItem"), recFill = $("recFill"), recLabel = $("recLabel"), recTime = $("recTime");
+const listEl = $("audioList"), listEmpty = $("listEmpty"), listTitle = $("listTitle"), toggleDone = $("toggleDone");
+// visualiser
+const sessionSel = $("sessionSel"), viewerInfo = $("viewerInfo"), vplayer = $("vplayer"), blocksEl = $("blocks");
+// modale
+const modal = $("modal"), mrec = $("mrec"), mtime = $("mtime"), mbar = $("mbar");
+const mresult = $("mresult"), mstatus = $("mstatus"), msource = $("msource"), player = $("player");
+const abRadios = [...document.querySelectorAll('input[name="ab"]')];
+
+const source = () => sourceRadios.find(r => r.checked).value;
+const SILENCE_RMS = 0.01;
+const SR = 16000;
+
+const workletCode = `
+class Rec extends AudioWorkletProcessor {
+  constructor() { super(); this.buf = []; this.n = 0; }
+  process(inputs) {
+    const ch = inputs[0][0];
+    if (ch) {
+      this.buf.push(new Float32Array(ch)); this.n += ch.length;
+      if (this.n >= 4096) {
+        const out = new Int16Array(this.n); let o = 0;
+        for (const b of this.buf) for (let i = 0; i < b.length; i++)
+          out[o++] = Math.max(-1, Math.min(1, b[i])) * 32767;
+        this.port.postMessage(out.buffer, [out.buffer]);
+        this.buf = []; this.n = 0;
+      }
+    }
+    return true;
+  }
+}
+registerProcessor("rec", Rec);`;
+
+async function openRecorder(stream, onChunk) {
+  const audioCtx = new AudioContext({ sampleRate: SR });
+  const url = URL.createObjectURL(new Blob([workletCode], { type: "application/javascript" }));
+  await audioCtx.audioWorklet.addModule(url);
+  const src = audioCtx.createMediaStreamSource(stream);
+  const node = new AudioWorkletNode(audioCtx, "rec", { channelCount: 1, channelCountMode: "explicit" });
+  node.port.onmessage = (e) => onChunk(e.data);
+  src.connect(node);
+  return { audioCtx, src };
+}
+
+// ---------- état global & verrous ----------
+const live = { running: false, ws: null, closing: null, stream: null, ctx: null, stopMeter: null, file: null, seen: 0 };
+const chunk = { recording: false, ws: null, stream: null, ctx: null, stopMeter: null, segSamples: 0, silentRun: 0, noise: null };
+let testing = false, testCtx, testStream, stopTestMeter;
+let currentPage = "live";
+let engines = [], denoiseAvailable = true;
+
+function applyLocks() {
+  const busy = live.running || chunk.recording;
+  testBtn.disabled = busy;
+  openModalBtn.disabled = busy;
+  deviceEl.disabled = busy;
+  sourceRadios.forEach(r => r.disabled = busy);
+  engineEl.disabled = live.running;
+  btn.disabled = chunk.recording;
+  recBtn.disabled = live.running;
+}
+
+function setState(kind, text) {
+  pill.className = "pill" + (kind ? " " + kind : "");
+  pillText.textContent = text;
+}
+function setStatus(text, isError) {
+  statusEl.textContent = text || "";
+  statusEl.className = "status" + (isError ? " err" : "");
+}
+function setCStatus(text, isError) {
+  cstatus.textContent = text || "";
+  cstatus.className = "status" + (isError ? " err" : "");
+}
+
+// ---------- navigation ----------
+function showPage(p) {
+  currentPage = p;
+  ["live", "chunks", "viewer"].forEach(n => { $("page-" + n).hidden = n !== p; });
+  $("shared").hidden = p === "viewer";
+  tabs.forEach(t => t.classList.toggle("active", t.dataset.page === p));
+  history.replaceState(null, "", "#" + p);
+  updateDenoiseUi();
+  updateHints();
+  if (p === "chunks") refreshState();
+  if (p === "viewer") loadSessions();
+}
+tabs.forEach(t => t.onclick = () => showPage(t.dataset.page));
+
+// ---------- périphériques ----------
+async function refreshDevices(selectedId) {
+  const keep = selectedId ?? deviceEl.value;
+  const devs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "audioinput");
+  deviceEl.innerHTML = "";
+  devs.forEach((d, i) => {
+    const o = document.createElement("option");
+    o.value = d.deviceId;
+    o.textContent = d.label || ("Entrée audio " + (i + 1));
+    deviceEl.appendChild(o);
+  });
+  if ([...deviceEl.options].some(o => o.value === keep)) deviceEl.value = keep;
+}
+
+async function getStream() {
+  if (source() === "system") {
+    const s = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+    if (!s.getAudioTracks().length) {
+      s.getTracks().forEach(t => t.stop());
+      throw new Error("aucun son partagé (coche l'option de partage de l'audio)");
+    }
+    return s;
+  }
+  const id = deviceEl.value;
+  const s = await navigator.mediaDevices.getUserMedia({
+    audio: {
+      deviceId: id ? { exact: id } : undefined,
+      channelCount: 1,
+      echoCancellation: false,
+      noiseSuppression: false,
+      autoGainControl: true,
+    },
+  });
+  await refreshDevices(s.getAudioTracks()[0].getSettings().deviceId); // les noms apparaissent après autorisation
+  return s;
+}
+
+// ---------- indicateur de niveau ----------
+function startMeter(audioCtx, srcNode, barEl) {
+  const an = audioCtx.createAnalyser();
+  an.fftSize = 1024;
+  srcNode.connect(an);
+  const data = new Float32Array(an.fftSize);
+  let raf, alive = true;
+  (function loop() {
+    if (!alive) return;
+    an.getFloatTimeDomainData(data);
+    let s = 0;
+    for (const v of data) s += v * v;
+    barEl.style.width = Math.min(100, Math.sqrt(s / data.length) * 400) + "%";
+    raf = requestAnimationFrame(loop);
+  })();
+  return () => { alive = false; cancelAnimationFrame(raf); barEl.style.width = "0%"; };
+}
+
+// ---------- test du micro ----------
+async function startTest() {
+  try {
+    testStream = await getStream();
+    testCtx = new AudioContext();
+    stopTestMeter = startMeter(testCtx, testCtx.createMediaStreamSource(testStream), bar);
+    testing = true;
+    testBtn.textContent = "Arrêter le test";
+    setStatus("");
+  } catch (err) { setStatus("Erreur : " + err.message, true); }
+}
+function stopTest() {
+  testStream?.getTracks().forEach(t => t.stop());
+  testCtx?.close();
+  stopTestMeter?.();
+  testing = false;
+  testBtn.textContent = "Tester";
+}
+testBtn.onclick = () => { if (live.running || chunk.recording) return; testing ? stopTest() : startTest(); };
+deviceEl.onchange = () => { if (testing) { stopTest(); startTest(); } };
+sourceRadios.forEach(r => r.onchange = () => { updateHints(); if (testing) stopTest(); });
+navigator.mediaDevices.addEventListener("devicechange", () => refreshDevices());
+
+function updateHints() {
+  const sys = source() === "system";
+  deviceEl.style.display = sys ? "none" : "block";
+  hint.textContent = sys
+    ? "Une fenêtre de partage va s'ouvrir : choisis « Écran entier » (ou un onglet) et coche « Partager l'audio »."
+    : "La barre doit dépasser le trait blanc quand tu parles, sinon rien ne sera transcrit.";
+}
+
+// ---------- réduction de bruit ----------
+function updateDenoiseUi() {
+  const eng = engines.find(e => e.id === engineEl.value);
+  const unsupported = currentPage === "live" && eng && !eng.supports_denoise;
+  denoiseEl.disabled = !denoiseAvailable || !!unsupported;
+  if (!denoiseAvailable) denoiseNote.textContent = "Indisponible : DeepFilterNet est introuvable sur le serveur.";
+  else if (unsupported) denoiseNote.textContent = "Non disponible avec ce moteur de transcription.";
+  else if (currentPage === "chunks") denoiseNote.textContent = "DeepFilterNet, appliquée à chaque audio avant sa transcription. Plus lent : compte environ la moitié de la durée de l'audio en plus.";
+  else denoiseNote.textContent = "DeepFilterNet, appliquée à la version finale de chaque phrase (celle écrite dans le fichier). L'aperçu en gris reste brut. Peut ralentir la transcription.";
+}
+function sendDenoise() {
+  if (live.ws && live.ws.readyState === 1) live.ws.send(JSON.stringify({ denoise: denoiseEl.checked }));
+}
+denoiseEl.onchange = () => { sendDenoise(); jpost("/api/settings", { denoise: denoiseEl.checked }).catch(() => {}); };
+
+// ---------- moteurs (page live) ----------
+let enginesSig = "";
+function updateEngineNote() {
+  const eng = engines.find(e => e.id === engineEl.value);
+  const parts = [];
+  if (eng && eng.note) parts.push(eng.note);
+  engines.filter(e => !e.available && e.hint).forEach(e => parts.push(e.hint));
+  engineNote.textContent = parts.join(" ");
+}
+async function loadEngines() {
+  try {
+    const d = await jget("/api/engines");
+    engines = d.engines; denoiseAvailable = d.deepfilter;
+  } catch { if (!engines.length) engines = [{ id: "whisper", name: "Whisper", available: true, supports_denoise: true }]; }
+  const sig = JSON.stringify(engines.map(e => [e.id, e.available]));
+  if (sig !== enginesSig) {
+    enginesSig = sig;
+    const keep = engineEl.value;
+    engineEl.innerHTML = "";
+    engines.forEach(e => {
+      const o = document.createElement("option");
+      o.value = e.id;
+      o.textContent = e.name + (e.available ? "" : " (indisponible)");
+      o.disabled = !e.available;
+      engineEl.appendChild(o);
+    });
+    const kept = engines.find(e => e.id === keep && e.available);
+    const first = kept || engines.find(e => e.available);
+    if (first) engineEl.value = first.id;
+  }
+  updateEngineNote();
+  updateDenoiseUi();
+}
+engineEl.onchange = () => { updateEngineNote(); updateDenoiseUi(); };
+// un moteur peut démarrer plus tard que la page (chargement de son modèle) : on réessaie tant qu'il en manque
+setInterval(() => { if (currentPage === "live" && !live.running && engines.some(e => !e.available)) loadEngines(); }, 4000);
+
+// ====================================================================
+//  PAGE 1 : LIVE
+// ====================================================================
+function refreshEmpty() {
+  emptyEl.style.display = (finalEl.textContent || partialEl.textContent) ? "none" : "inline";
+}
+
+// ----- le texte figé (blanc) est modifiable, le texte en cours (gris) ne l'est pas ; les corrections sont enregistrées -----
+let saveTimer = null, saveChain = Promise.resolve(), dirty = false;
+
+function setSaveState(text, isError) {
+  saveStateEl.textContent = text || "";
+  saveStateEl.className = "save-state" + (isError ? " err" : "");
+}
+function setEditable(on) { finalEl.setAttribute("contenteditable", on ? "true" : "false"); }
+function appendFinal(text) {
+  const line = document.createElement("div");
+  line.textContent = text;
+  finalEl.appendChild(line);  // on ajoute une ligne : le curseur et la sélection de l'utilisateur ne bougent pas
+}
+function editorText() {  // une ligne de texte par ligne affichée
+  const lines = [];
+  let cur = "";
+  const flush = () => { lines.push(cur); cur = ""; };
+  const walk = (node) => node.childNodes.forEach((n) => {
+    if (n.nodeType === 3) cur += n.textContent;
+    else if (n.nodeName === "BR") flush();
+    else if (n.nodeName === "DIV" || n.nodeName === "P") { if (cur) flush(); walk(n); if (cur) flush(); }
+    else walk(n);
+  });
+  walk(finalEl);
+  if (cur) flush();
+  return lines.join("\n");
+}
+async function doSave() {
+  if (!dirty || !live.file) return;
+  dirty = false;
+  const body = JSON.stringify({ file: live.file, text: editorText(), upto: live.seen });  // upto : nombre de phrases déjà affichées
+  setSaveState("Enregistrement…");
+  try {
+    const r = await fetch("/api/live/edit", { method: "POST", headers: { "Content-Type": "application/json" }, body });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    if (!dirty) setSaveState("Modifications enregistrées ✓");
+  } catch (err) {
+    dirty = true;
+    setSaveState("Échec de l'enregistrement : " + err.message, true);
+  }
+}
+function saveEdit() { clearTimeout(saveTimer); saveChain = saveChain.then(doSave); return saveChain; }
+
+finalEl.addEventListener("input", () => {
+  dirty = true;
+  setSaveState("Modification…");
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveEdit, 700);
+  refreshEmpty();
+});
+finalEl.addEventListener("blur", () => { if (dirty) saveEdit(); });
+finalEl.addEventListener("paste", (e) => {  // on colle du texte brut, sans mise en forme
+  e.preventDefault();
+  const text = (e.clipboardData || window.clipboardData).getData("text");
+  document.execCommand("insertText", false, text);
+});
+window.addEventListener("beforeunload", () => {
+  if (dirty && live.file) navigator.sendBeacon("/api/live/edit", new Blob([JSON.stringify({ file: live.file, text: editorText(), upto: live.seen })], { type: "application/json" }));
+});
+
+async function startLive() {
+  if (testing) stopTest();
+  if (live.closing) { try { live.closing.close(); } catch { /* déjà fermé */ } live.closing = null; }
+  setStatus("");
+  live.stream = await getStream();
+  live.stream.getAudioTracks()[0].onended = () => { if (live.running) stopLive(); };
+
+  await saveEdit();  // les corrections de la session précédente sont enregistrées avant de repartir de zéro
+  finalEl.textContent = "";
+  partialEl.textContent = "";
+  live.file = null; live.seen = 0; dirty = false;
+  setEditable(false); setSaveState("");
+  refreshEmpty();
+
+  const ws = new WebSocket(wsUrl("/ws?engine=" + encodeURIComponent(engineEl.value)));
+  live.ws = ws;
+  ws.binaryType = "arraybuffer";
+  ws.onmessage = (e) => {
+    if (ws !== live.ws && ws !== live.closing) return;
+    const m = JSON.parse(e.data);
+    if (m.type === "info") { if (m.file) { live.file = m.file; setEditable(true); } return; }
+    if (m.type === "error") { setStatus("Erreur : " + m.text, true); return; }
+    const nearBottom = outEl.scrollHeight - outEl.scrollTop - outEl.clientHeight < 80;
+    if (m.type === "final") {
+      appendFinal(m.text);
+      live.seen = typeof m.n === "number" ? m.n : live.seen + 1;
+      partialEl.textContent = "";
+    } else partialEl.textContent = m.text;
+    refreshEmpty();
+    if (nearBottom) outEl.scrollTop = outEl.scrollHeight;
+  };
+  ws.onclose = () => {
+    if (live.closing === ws) live.closing = null;
+    if (live.running && live.ws === ws) { const hadError = statusEl.classList.contains("err"); stopLive(); if (!hadError) setStatus("Connexion au serveur interrompue.", true); }
+  };
+  await new Promise((res, rej) => { ws.onopen = res; ws.onerror = () => rej(new Error("connexion au serveur impossible")); });
+  sendDenoise();
+
+  const rec = await openRecorder(live.stream, (buf) => { const w = live.ws; if (w && w.readyState === 1) w.send(buf); });
+  live.ctx = rec.audioCtx;
+  live.stopMeter = startMeter(rec.audioCtx, rec.src, bar);
+
+  live.running = true;
+  btn.textContent = "Arrêter"; btn.classList.add("rec");
+  setState("live", "Écoute en cours");
+  applyLocks();
+}
+
+function stopLive() {
+  const ws = live.ws; live.ws = null;
+  live.stream?.getTracks().forEach(t => t.stop());
+  live.ctx?.close();
+  live.stopMeter?.();
+  live.running = false;
+  btn.textContent = "Démarrer"; btn.classList.remove("rec");
+  setState("", "Prêt");
+  applyLocks();
+  if (ws && ws.readyState === 1) {
+    // on laisse au serveur le temps de figer les derniers mots (le serveur ferme dès qu'il a fini), puis on ferme
+    live.closing = ws;
+    ws.send(JSON.stringify({ stop: true }));
+    setTimeout(() => { try { ws.close(); } catch { /* déjà fermé */ } if (live.closing === ws) live.closing = null; }, 10000);
+  } else ws?.close();
+}
+
+btn.onclick = () => live.running ? stopLive() : startLive().catch(err => {
+  stopLive();
+  setState("error", "Erreur");
+  setStatus("Erreur : " + err.message, true);
+});
+
+// ====================================================================
+//  PAGE 2 : PAR MORCEAUX
+// ====================================================================
+const PAUSE_SAMPLES = 0.4 * SR;     // pause nécessaire pour couper
+const MAX_EXTRA_SAMPLES = 15 * SR;  // on coupe quoi qu'il arrive 15 s après la durée choisie
+const tickEl = document.querySelector("#shared .tick");
+const updateTick = (thr) => { tickEl.style.left = Math.min(100, thr * 400) + "%"; };
+let lastState = null, showDone = false;
+
+function targetSeconds() {
+  const v = durRadios.find(r => r.checked).value;
+  if (v === "custom") { const m = parseFloat(durCustom.value); return Math.max(15, (isFinite(m) ? m : 1) * 60); }
+  return parseFloat(v) * 60;
+}
+durRadios.forEach(r => r.onchange = () => { durRow.hidden = durRadios.find(x => x.checked).value !== "custom"; });
+
+function updateRecItem() {
+  const target = targetSeconds();
+  const elapsed = chunk.segSamples / SR;
+  recFill.style.width = Math.min(100, elapsed / target * 100) + "%";
+  recTime.textContent = fmtTime(elapsed) + " / " + fmtTime(target);
+  recLabel.textContent = elapsed >= target ? "En attente d'une pause pour couper…" : "Enregistrement en cours…";
+}
+
+function cutChunk() {
+  if (chunk.ws && chunk.ws.readyState === 1) chunk.ws.send(JSON.stringify({ cut: true }));
+  chunk.segSamples = 0;
+  chunk.silentRun = 0;
+}
+
+function onChunkAudio(buf) {
+  if (!chunk.recording) return;
+  if (chunk.ws.readyState === 1) chunk.ws.send(buf);
+  const x = new Int16Array(buf);
+  let s = 0;
+  for (let i = 0; i < x.length; i++) { const v = x[i] / 32768; s += v * v; }
+  const rms = Math.sqrt(s / x.length);
+  // seuil adaptatif : le bruit de fond est estimé (descend vite, remonte lentement) et le silence se mesure par rapport à lui
+  if (chunk.noise === null || rms < chunk.noise) chunk.noise = rms;
+  else chunk.noise += (rms - chunk.noise) * 0.008;
+  const thr = Math.max(SILENCE_RMS, chunk.noise * 2);
+  updateTick(thr);
+  chunk.silentRun = rms < thr ? chunk.silentRun + x.length : 0;
+  chunk.segSamples += x.length;
+  const target = targetSeconds() * SR;
+  if (chunk.segSamples >= target && (chunk.silentRun >= PAUSE_SAMPLES || chunk.segSamples >= target + MAX_EXTRA_SAMPLES)) cutChunk();
+  updateRecItem();
+}
+
+async function startChunk() {
+  if (testing) stopTest();
+  setCStatus("");
+  chunk.stream = await getStream();
+  chunk.stream.getAudioTracks()[0].onended = () => { if (chunk.recording) stopChunk(); };
+
+  chunk.ws = new WebSocket(wsUrl("/ws/record"));
+  chunk.ws.binaryType = "arraybuffer";
+  chunk.ws.onmessage = (e) => { const m = JSON.parse(e.data); if (m.type === "saved") refreshState(); };
+  chunk.ws.onclose = () => { if (chunk.recording) { stopChunk(false); setCStatus("Connexion au serveur interrompue.", true); } };
+  await new Promise((res, rej) => { chunk.ws.onopen = res; chunk.ws.onerror = () => rej(new Error("connexion au serveur impossible")); });
+
+  chunk.segSamples = 0; chunk.silentRun = 0; chunk.noise = null;
+  const rec = await openRecorder(chunk.stream, onChunkAudio);
+  chunk.ctx = rec.audioCtx;
+  chunk.stopMeter = startMeter(rec.audioCtx, rec.src, bar);
+
+  chunk.recording = true;
+  recItem.hidden = false;
+  updateRecItem();
+  recBtn.textContent = "Arrêter l'enregistrement"; recBtn.classList.add("rec");
+  setState("live", "Enregistrement");
+  applyLocks();
+}
+
+function stopChunk(sendStop = true) {
+  const ws = chunk.ws; chunk.ws = null;
+  if (sendStop && ws && ws.readyState === 1) ws.send(JSON.stringify({ stop: true }));
+  chunk.recording = false;
+  chunk.stream?.getTracks().forEach(t => t.stop());
+  chunk.ctx?.close();
+  chunk.stopMeter?.();
+  updateTick(SILENCE_RMS);
+  if (ws) setTimeout(() => ws.close(), 400);
+  recItem.hidden = true;
+  recBtn.textContent = "Enregistrer"; recBtn.classList.remove("rec");
+  setState("", "Prêt");
+  applyLocks();
+  setTimeout(refreshState, 1200);
+}
+
+recBtn.onclick = () => chunk.recording ? stopChunk() : startChunk().catch(err => {
+  stopChunk(false);
+  setState("error", "Erreur");
+  setCStatus("Erreur : " + err.message, true);
+});
+
+trBtn.onclick = async () => {
+  if (trBtn.disabled) return;
+  const active = lastState && lastState.job.active;
+  trBtn.disabled = true;
+  try {
+    if (active) await jpost("/api/transcribe/cancel");
+    else { await jpost("/api/settings", { denoise: denoiseEl.checked }); await jpost("/api/transcribe/start"); }
+  } catch (err) { setCStatus("Erreur : " + err.message, true); }
+  await refreshState();
+  setTimeout(refreshState, 600);  // l'annulation prend effet à la fin du segment en cours
+};
+
+toggleDone.onclick = () => { showDone = !showDone; if (lastState) renderList(lastState); };
+
+// ----- lecture d'un audio de la liste -----
+const listPlayer = new Audio();
+let playingId = null, seekDragging = false;
+function updatePlayIcons() {
+  rows.forEach((li, id) => { li.querySelector(".play").textContent = (id === playingId && !listPlayer.paused) ? "⏸" : "▶"; });
+}
+function updateSeekUi() {
+  rows.forEach((li, id) => {
+    const seek = li.querySelector(".seek"), cur = li.querySelector(".tcur");
+    if (id === playingId) {
+      if (seekDragging) return;
+      const d = listPlayer.duration || li._dur || 0;
+      const frac = d ? Math.min(1, listPlayer.currentTime / d) : 0;
+      seek.value = Math.round(frac * 1000);
+      seek.style.setProperty("--p", (frac * 100) + "%");
+      cur.textContent = fmtTime(listPlayer.currentTime);
+    } else {
+      seek.value = 0;
+      seek.style.setProperty("--p", "0%");
+      cur.textContent = "0:00";
+    }
+  });
+}
+function syncPlayerUi() { updatePlayIcons(); updateSeekUi(); }
+listPlayer.onplay = listPlayer.onpause = listPlayer.onended = listPlayer.ontimeupdate = listPlayer.onloadedmetadata = listPlayer.onseeked = syncPlayerUi;
+
+// déplace la lecture ; si l'audio n'est pas celui en cours, on le charge (sans le lancer)
+function seekTo(id, frac) {
+  const apply = () => {
+    const row = rows.get(id);
+    const d = listPlayer.duration || (row && row._dur) || 0;
+    if (d) listPlayer.currentTime = frac * d;
+  };
+  if (playingId !== id) {
+    playingId = id;  // avant de toucher au lecteur : ses événements doivent déjà considérer cette ligne comme active
+    listPlayer.pause();
+    listPlayer.src = "/audio/" + id + ".wav";
+    listPlayer.addEventListener("loadedmetadata", apply, { once: true });
+    updatePlayIcons();
+  } else apply();
+}
+function togglePlay(id) {
+  if (playingId === id && !listPlayer.paused) { listPlayer.pause(); return; }
+  if (playingId !== id) { playingId = id; listPlayer.src = "/audio/" + id + ".wav"; }
+  listPlayer.play().catch(() => {});
+}
+
+async function deleteAudio(id) {
+  if (!confirm("Supprimer définitivement cet audio ?")) return;
+  if (playingId === id) { listPlayer.pause(); listPlayer.removeAttribute("src"); listPlayer.load(); playingId = null; seekDragging = false; }  // libère le fichier (Windows)
+  const r = await fetch("/api/audios/" + id, { method: "DELETE" });
+  if (r.status === 409) setCStatus("Impossible : cet audio est en cours de transcription.", true);
+  refreshState();
+}
+async function restoreAudio(id) {
+  await fetch("/api/audios/" + id + "/restore", { method: "POST" });
+  refreshState();
+}
+
+// ----- liste des audios (mise à jour en place, sans clignotement) -----
+const rows = new Map();
+function makeRow(a) {
+  const li = document.createElement("li");
+  li.className = "audio";
+  li.dataset.id = a.id;
+  li.innerHTML = `
+    <button class="icon-btn play" title="Écouter">▶</button>
+    <div class="info">
+      <div class="title"><span class="date"></span><span class="chk" title="Déjà transcrit">✓</span></div>
+      <div class="seekrow"><span class="tcur">0:00</span><input type="range" class="seek" min="0" max="1000" value="0" aria-label="Position de lecture"><span class="tdur"></span></div>
+      <div class="prog" hidden><div class="fill"></div></div>
+      <div class="sub" hidden></div>
+    </div>
+    <button class="btn ghost small restore">Restaurer</button>
+    <button class="icon-btn del" title="Supprimer">✕</button>`;
+  li.querySelector(".play").onclick = () => togglePlay(a.id);
+  li.querySelector(".del").onclick = () => deleteAudio(a.id);
+  li.querySelector(".restore").onclick = () => restoreAudio(a.id);
+  const seek = li.querySelector(".seek");
+  seek.oninput = () => {
+    seekDragging = true;
+    const frac = seek.value / 1000;
+    seek.style.setProperty("--p", (frac * 100) + "%");
+    li.querySelector(".tcur").textContent = fmtTime(frac * (li._dur || 0));
+    seekTo(a.id, frac);
+  };
+  seek.onchange = () => { seekDragging = false; updateSeekUi(); };
+  return li;
+}
+
+function updateRow(li, a, job) {
+  li.classList.toggle("done", a.transcribed);
+  li.querySelector(".date").textContent = idToDate(a.id);
+  li._dur = a.duration;
+  li.querySelector(".tdur").textContent = fmtTime(a.duration);
+  li.querySelector(".chk").hidden = !a.transcribed;
+  li.querySelector(".restore").hidden = !a.transcribed;
+  const prog = li.querySelector(".prog"), fill = li.querySelector(".fill"), sub = li.querySelector(".sub");
+  const cur = job.current && job.current.id === a.id ? job.current : null;
+  li.querySelector(".del").disabled = !!cur;
+  if (cur) {
+    prog.hidden = false;
+    const indet = cur.progress === null || cur.phase === "loading" || cur.phase === "denoise";
+    prog.classList.toggle("indet", indet);
+    fill.style.width = indet ? "" : Math.round((cur.progress || 0) * 100) + "%";
+    sub.hidden = false; sub.className = "sub";
+    sub.textContent = cur.phase === "denoise" ? "Réduction de bruit…" : cur.phase === "loading" ? "Préparation…" : "Transcription : " + Math.round((cur.progress || 0) * 100) + " %";
+  } else {
+    prog.hidden = true;
+    if (a.error) { sub.hidden = false; sub.className = "sub err"; sub.textContent = "Échec : " + a.error; }
+    else sub.hidden = true;
+  }
+}
+
+function renderList(state) {
+  lastState = state;
+  const doneCount = state.audios.filter(a => a.transcribed).length;
+  const todo = state.audios.length - doneCount;
+  const visible = state.audios.filter(a => showDone || !a.transcribed);
+  const ids = new Set(visible.map(a => a.id));
+  rows.forEach((li, id) => { if (!ids.has(id)) { li.remove(); rows.delete(id); } });
+  visible.forEach(a => {
+    let li = rows.get(a.id);
+    if (!li) { li = makeRow(a); rows.set(a.id, li); }
+    updateRow(li, a, state.job);
+  });
+  const desired = visible.map(a => rows.get(a.id));
+  const current = [...listEl.children];
+  if (desired.length !== current.length || desired.some((el, i) => el !== current[i])) listEl.replaceChildren(...desired);
+  syncPlayerUi();
+
+  listTitle.textContent = "Audios (" + todo + " à transcrire)";
+  toggleDone.textContent = (showDone ? "Masquer" : "Afficher") + " les audios transcrits (" + doneCount + ")";
+  toggleDone.hidden = doneCount === 0;
+  listEmpty.hidden = visible.length > 0 || !!chunk.recording;
+  listEmpty.textContent = doneCount > 0 && !showDone ? "Tous les audios sont transcrits." : "Aucun audio pour l'instant.";
+
+  const j = state.job;
+  trBtn.textContent = j.cancelling ? "Annulation…" : (j.active ? "Annuler la transcription" : "Transcrire");
+  trBtn.disabled = !!j.cancelling || (!j.active && todo === 0);
+  trBtn.classList.toggle("rec", j.active);
+  sessionInfo.textContent = j.active && j.session
+    ? "Fichier texte en cours : " + j.session + ".txt (dossier transcriptions)"
+    : (j.last_session ? "Dernière transcription : " + j.last_session + ".txt (dossier transcriptions)" : "");
+}
+
+async function refreshState() {
+  try {
+    const s = await jget("/api/state");
+    if (!lastState) denoiseEl.checked = !!(s.settings && s.settings.denoise);
+    renderList(s);
+  } catch { /* serveur indisponible */ }
+}
+setInterval(() => { if (currentPage === "chunks") refreshState(); }, 1000);
+
+// ====================================================================
+//  PAGE 3 : VISUALISER LES TRANSCRIPTIONS
+// ====================================================================
+let vblocks = [], currentBlock = -1, activeWord = null, hlRunning = false;
+
+function fmtSessionName(s) {
+  return idToDate(s.name.replace(/^session_/, "")) + " — " + s.count + " audio" + (s.count > 1 ? "s" : "") + ", " + s.words + " mots";
+}
+
+async function loadSessions() {
+  let list = [];
+  try { list = await jget("/api/sessions"); } catch { /* ignoré */ }
+  const keep = sessionSel.value;
+  sessionSel.innerHTML = "";
+  list.forEach(s => {
+    const o = document.createElement("option");
+    o.value = s.name; o.textContent = fmtSessionName(s);
+    sessionSel.appendChild(o);
+  });
+  if (!list.length) {
+    viewerInfo.textContent = "Aucune transcription par morceaux pour l'instant. Les transcriptions du mode live ne sont pas conservées avec leur audio.";
+    blocksEl.replaceChildren();
+    return;
+  }
+  viewerInfo.textContent = "Clique sur un mot pour écouter l'audio à cet endroit.";
+  if (list.some(s => s.name === keep)) sessionSel.value = keep;
+  loadSession(sessionSel.value);
+}
+sessionSel.onchange = () => loadSession(sessionSel.value);
+
+async function loadSession(name) {
+  vplayer.pause();
+  currentBlock = -1; activeWord = null;
+  let data;
+  try { data = await jget("/api/sessions/" + encodeURIComponent(name)); } catch { return; }
+  vblocks = [];
+  const frag = document.createDocumentFragment();
+  if (!data.items.length) {
+    const p = document.createElement("p");
+    p.className = "no-speech"; p.textContent = "Cette session ne contient encore aucun audio transcrit.";
+    frag.appendChild(p);
+  }
+  data.items.forEach((it, idx) => {
+    const block = document.createElement("div");
+    block.className = "block" + (it.audio_exists ? "" : " nosound");
+    const head = document.createElement("div");
+    head.className = "block-head";
+    const playBtn = document.createElement("button");
+    playBtn.className = "icon-btn"; playBtn.textContent = "▶"; playBtn.title = "Écouter depuis le début";
+    playBtn.disabled = !it.audio_exists;
+    playBtn.onclick = () => playBlock(idx, 0);
+    const label = document.createElement("span");
+    label.textContent = idToDate(it.audio_id) + " · " + fmtTime(it.duration) + (it.audio_exists ? "" : " · audio supprimé");
+    head.append(playBtn, label);
+    const p = document.createElement("p");
+    p.className = "words";
+    const words = [];
+    if (!it.words.length) { p.className += " no-speech"; p.textContent = "(aucune parole détectée)"; }
+    it.words.forEach((w, i) => {
+      if (i > 0) p.appendChild(document.createTextNode(" "));
+      const span = document.createElement("span");
+      span.className = "w"; span.textContent = w.word;
+      span.onclick = () => playBlock(idx, w.start);
+      p.appendChild(span);
+      words.push({ el: span, start: w.start, end: w.end });
+    });
+    block.append(head, p);
+    frag.appendChild(block);
+    vblocks.push({ id: it.audio_id, exists: it.audio_exists, words });
+  });
+  blocksEl.replaceChildren(frag);
+}
+
+function playBlock(idx, t) {
+  const b = vblocks[idx];
+  if (!b || !b.exists) return;
+  currentBlock = idx;
+  const go = () => { vplayer.currentTime = t; vplayer.play().catch(() => {}); };
+  if (vplayer.dataset.id !== b.id) {
+    vplayer.dataset.id = b.id;
+    vplayer.src = "/audio/" + b.id + ".wav";
+    vplayer.addEventListener("loadedmetadata", go, { once: true });
+  } else go();
+}
+
+function setActiveWord(el) {
+  if (el === activeWord) return;
+  activeWord?.classList.remove("active");
+  activeWord = el;
+  if (el) {
+    el.classList.add("active");
+    const r = el.getBoundingClientRect();
+    if (r.top < 120 || r.bottom > window.innerHeight - 40) el.scrollIntoView({ block: "center", behavior: "smooth" });
+  }
+}
+
+function highlightNow() {
+  const b = vblocks[currentBlock];
+  if (!b || !b.words.length) return setActiveWord(null);
+  const t = vplayer.currentTime;
+  let lo = 0, hi = b.words.length - 1, idx = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (b.words[mid].start <= t) { idx = mid; lo = mid + 1; } else hi = mid - 1;
+  }
+  setActiveWord(idx >= 0 ? b.words[idx].el : null);
+}
+function hlLoop() {
+  if (vplayer.paused) { hlRunning = false; return; }
+  highlightNow();
+  requestAnimationFrame(hlLoop);
+}
+vplayer.addEventListener("play", () => { if (!hlRunning) { hlRunning = true; requestAnimationFrame(hlLoop); } });
+vplayer.addEventListener("seeked", highlightNow);
+vplayer.addEventListener("ended", () => {  // lecture continue : on enchaîne sur l'audio suivant de la session
+  let next = currentBlock + 1;
+  while (next < vblocks.length && !vblocks[next].exists) next++;
+  if (next < vblocks.length) playBlock(next, 0);
+});
+
+// ====================================================================
+//  MODALE : enregistrer puis comparer avec / sans traitement
+// ====================================================================
+const MAX_CLIP = 30;  // secondes
+let mRecording = false, mStream, mCtx, mChunks = [], mStopMeter, mTimer, mT0;
+const urls = { orig: null, clean: null };
+
+function pcmToWav(chunks, sr = 16000) {
+  const n = chunks.reduce((a, c) => a + c.length, 0);
+  const buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
+  const w = (o, str) => { for (let i = 0; i < str.length; i++) v.setUint8(o + i, str.charCodeAt(i)); };
+  w(0, "RIFF"); v.setUint32(4, 36 + n * 2, true); w(8, "WAVE"); w(12, "fmt ");
+  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, sr, true); v.setUint32(28, sr * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  w(36, "data"); v.setUint32(40, n * 2, true);
+  let o = 44;
+  for (const c of chunks) for (let i = 0; i < c.length; i++, o += 2) v.setInt16(o, c[i], true);
+  return new Blob([buf], { type: "audio/wav" });
+}
+
+const abValue = () => abRadios.find(r => r.checked).value;
+
+function resetResult() {
+  player.pause();
+  player.removeAttribute("src");
+  Object.keys(urls).forEach(k => { if (urls[k]) URL.revokeObjectURL(urls[k]); urls[k] = null; });
+  abRadios[0].checked = true;
+  abRadios[1].disabled = true;
+  mresult.hidden = true;
+  mstatus.textContent = "";
+  mtime.textContent = "0:00";
+}
+
+function switchAB() {
+  const t = player.currentTime, wasPlaying = !player.paused;
+  player.addEventListener("loadedmetadata", () => {
+    player.currentTime = t;
+    if (wasPlaying) player.play();
+  }, { once: true });
+  player.src = urls[abValue()];
+}
+abRadios.forEach(r => r.onchange = switchAB);
+
+function mCleanup() {
+  mRecording = false;
+  clearInterval(mTimer);
+  mStopMeter?.();
+  mStream?.getTracks().forEach(t => t.stop());
+  mCtx?.close();
+  mrec.textContent = "Enregistrer"; mrec.classList.remove("rec");
+}
+
+async function mStart() {
+  resetResult();
+  mStream = await getStream();
+  mStream.getAudioTracks()[0].onended = () => { if (mRecording) mStop(); };
+  mChunks = [];
+  const rec = await openRecorder(mStream, (buf) => mChunks.push(new Int16Array(buf)));
+  mCtx = rec.audioCtx;
+  mStopMeter = startMeter(rec.audioCtx, rec.src, mbar);
+
+  mRecording = true;
+  mT0 = performance.now();
+  mTimer = setInterval(() => {
+    const s = (performance.now() - mT0) / 1000;
+    mtime.textContent = fmtTime(s);
+    if (s >= MAX_CLIP) mStop();
+  }, 200);
+  mrec.textContent = "Arrêter"; mrec.classList.add("rec");
+}
+
+async function mStop() {
+  if (!mRecording) return;
+  mCleanup();
+  const seconds = mChunks.reduce((a, c) => a + c.length, 0) / SR;
+  if (seconds < 0.5) { mstatus.textContent = "Enregistrement trop court."; return; }
+
+  const wav = pcmToWav(mChunks);
+  urls.orig = URL.createObjectURL(wav);
+  player.src = urls.orig;
+  mresult.hidden = false;
+  mstatus.textContent = "Traitement en cours…";
+  try {
+    const res = await fetch("/denoise", { method: "POST", headers: { "Content-Type": "audio/wav" }, body: wav });
+    if (!res.ok) throw new Error(res.status === 503 ? "réduction de bruit indisponible sur le serveur" : "échec du traitement (" + res.status + ")");
+    urls.clean = URL.createObjectURL(await res.blob());
+    abRadios[1].disabled = false;
+    mstatus.textContent = "Bascule entre « Original » et « Traité » pendant la lecture pour comparer.";
+  } catch (err) {
+    mstatus.textContent = "Erreur : " + err.message;
+  }
+}
+
+mrec.onclick = () => mRecording ? mStop() : mStart().catch(err => { mCleanup(); mstatus.textContent = "Erreur : " + err.message; });
+
+openModalBtn.onclick = () => {
+  if (live.running || chunk.recording) return;
+  if (testing) stopTest();
+  resetResult();
+  msource.textContent = "Source : " + (source() === "system"
+    ? "son de l'ordinateur"
+    : (deviceEl.selectedOptions[0]?.textContent || "micro par défaut"));
+  modal.showModal();
+};
+$("mclose").onclick = () => modal.close();
+modal.addEventListener("close", () => { mCleanup(); player.pause(); });
+
+// ====================================================================
+//  DÉMARRAGE
+// ====================================================================
+updateHints();
+refreshEmpty();
+refreshDevices();
+loadEngines().then(() => {
+  const wanted = location.hash.slice(1);
+  showPage(["live", "chunks", "viewer"].includes(wanted) ? wanted : "live");
+});
+</script>
+</body>
+</html>
