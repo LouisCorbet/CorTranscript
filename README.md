@@ -79,6 +79,11 @@ Puis **double-cliquer sur `build-windows.cmd`** à la racine. Le projet peut se
 trouver sur le Bureau, dans un chemin contenant des espaces et des accents.
 Une connexion Internet est nécessaire pour télécharger les bibliothèques et modèles.
 
+Le script recrée automatiquement son environnement d’outils à chaque lancement.
+Les bibliothèques natives sont sélectionnées explicitement pour **CPython 3.11.9
+Windows x64**, avec PyAV 15.1.0. L’import de `av._core` est vérifié dans le Python
+embarqué avant le téléchargement des modèles.
+
 Pour personnaliser la version et le modèle Whisper, depuis PowerShell :
 
 ```powershell

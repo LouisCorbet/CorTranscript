@@ -31,7 +31,8 @@ if ($env:OS -ne 'Windows_NT') { throw 'La construction du .exe doit être effect
 # Fail before downloading models if a prerequisite is missing.
 $python = (& py -3.11 -c 'import sys; print(sys.executable)')
 if ($LASTEXITCODE -ne 0) { throw 'Installe Python 3.11 x64 depuis python.org (avec le lanceur py).' }
-Invoke-Checked $python @('-c', "import struct; assert struct.calcsize('P') == 8, 'Python x64 requis'")
+$pythonCheck = "import struct, sys; assert sys.implementation.name == 'cpython' and sys.version_info[:2] == (3, 11) and struct.calcsize('P') == 8, 'CPython 3.11 x64 requis'; print('Python :', sys.version.split()[0], sys.executable)"
+Invoke-Checked $python @('-c', $pythonCheck)
 if (-not $InnoSetupCompiler) {
     $candidates = @(
         "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
@@ -60,11 +61,23 @@ Expand-Archive -LiteralPath $pythonZip -DestinationPath "$bundle\runtime" -Force
 @('python311.zip', '.', 'Lib\site-packages', '..\app', 'import site') |
     Set-Content -LiteralPath "$bundle\runtime\python311._pth" -Encoding ASCII
 $buildVenv = Join-Path $buildRoot 'tools'
-Invoke-Checked $python @('-m', 'venv', $buildVenv)
+# Always recreate the tools environment: never reuse pip or launchers from a
+# previous Python installation.
+Invoke-Checked $python @('-m', 'venv', '--clear', $buildVenv)
 $buildPython = Join-Path $buildVenv 'Scripts\python.exe'
-Invoke-Checked $buildPython @('-m', 'pip', 'install', '--upgrade', 'pip', 'pyinstaller==6.16.0')
-Invoke-Checked $buildPython @('-m', 'pip', 'install', '--no-warn-script-location', '--ignore-installed',
+Invoke-Checked $buildPython @('-c', $pythonCheck)
+Invoke-Checked $buildPython @('-m', 'pip', '--isolated', 'install', '--upgrade', 'pip', 'pyinstaller==6.16.0')
+# pip runs in the tools environment, but its target is the private CPython
+# 3.11 x64 runtime. Specify every wheel compatibility tag explicitly.
+Invoke-Checked $buildPython @('-m', 'pip', '--isolated', 'install', '--no-warn-script-location', '--ignore-installed',
+    '--only-binary=:all:', '--platform', 'win_amd64', '--implementation', 'cp',
+    '--python-version', '3.11.9', '--abi', 'cp311',
     '--target', "$bundle\runtime\Lib\site-packages", '-r', "$projectRoot\packaging\requirements-windows.txt")
+$runtimePython = Join-Path $bundle 'runtime\python.exe'
+Invoke-Checked $runtimePython @('-c', $pythonCheck)
+# Catch an absent/incompatible PyAV extension before downloading the models.
+$pyavCheck = "import pathlib, sys; print('Modules natifs PyAV :', [p.name for p in (pathlib.Path(sys.prefix) / 'Lib' / 'site-packages' / 'av').glob('_core*.pyd')]); import av, av._core; print('PyAV disponible :', av.__version__)"
+Invoke-Checked $runtimePython @('-c', $pyavCheck)
 
 Write-Host '[2/7] Intégration de DeepFilterNet et du runtime Microsoft.'
 $deepfilter = Join-Path $cache 'deep-filter-0.5.6-x86_64-pc-windows-msvc.exe'
@@ -77,7 +90,6 @@ Copy-Item -LiteralPath $vcRuntime -Destination "$bundle\vc_redist.x64.exe"
 Write-Host '[3/7] Copie des seuls fichiers applicatifs (aucune donnée personnelle).'
 Copy-Item -LiteralPath "$projectRoot\app.py", "$projectRoot\index.html", "$projectRoot\audio-inputs.js", "$projectRoot\packaging\windows_server.py" -Destination "$bundle\app"
 Copy-Item -LiteralPath "$projectRoot\packaging\THIRD_PARTY.md" -Destination "$bundle\licenses"
-$runtimePython = Join-Path $bundle 'runtime\python.exe'
 Write-Host '[4/7] Téléchargement et validation des modèles embarqués (cela peut être long).'
 Invoke-Checked $runtimePython @("$projectRoot\packaging\prepare_models.py", '--bundle', $bundle, '--model', $Model)
 

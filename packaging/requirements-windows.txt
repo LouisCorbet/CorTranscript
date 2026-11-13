@@ -1,2 +1,5 @@
 # La distribution Windows utilise les mêmes moteurs CPU que Docker.
 -r ../requirements.txt
+
+# Version native Windows compatible avec le Python 3.11 embarque.
+av==15.1.0
