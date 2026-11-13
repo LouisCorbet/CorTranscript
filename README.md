@@ -79,6 +79,16 @@ Puis **double-cliquer sur `build-windows.cmd`** à la racine. Le projet peut se
 trouver sur le Bureau, dans un chemin contenant des espaces et des accents.
 Une connexion Internet est nécessaire pour télécharger les bibliothèques et modèles.
 
+Le script recherche une installation **Python 3.11 x64** dans les emplacements
+Windows habituels, les installations enregistrées et le lanceur `py.exe`, puis
+vérifie la version réelle. Python 3.10 peut rester installé pour les autres
+projets. Pour un emplacement particulier, le chemin peut aussi être précisé :
+
+```powershell
+.\build-windows.cmd -PythonExecutable 'D:\Outils\Python311\python.exe'
+```
+
+
 Le script recrée automatiquement son environnement d’outils à chaque lancement.
 Les bibliothèques natives sont sélectionnées explicitement pour **CPython 3.11.9
 Windows x64**, avec PyAV 15.1.0. L’import de `av._core` est vérifié dans le Python

@@ -2,7 +2,8 @@
 param(
     [ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '1.1.0',
     [ValidateSet('tiny', 'base', 'small', 'medium', 'large-v3')][string]$Model = 'small',
-    [string]$InnoSetupCompiler = ''
+    [string]$InnoSetupCompiler = '',
+    [string]$PythonExecutable = ''
 )
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
@@ -28,9 +29,57 @@ function Get-Download {
 }
 
 if ($env:OS -ne 'Windows_NT') { throw 'La construction du .exe doit être effectuée sous Windows x64.' }
-# Fail before downloading models if a prerequisite is missing.
-$python = (& py -3.11 -c 'import sys; print(sys.executable)')
-if ($LASTEXITCODE -ne 0) { throw 'Installe Python 3.11 x64 depuis python.org (avec le lanceur py).' }
+# Check the actual interpreter instead of trusting the launcher or folder name.
+function Test-Python311 {
+    param([string]$Candidate)
+    if (-not $Candidate -or -not (Test-Path -LiteralPath $Candidate -PathType Leaf)) { return $false }
+    try {
+        & $Candidate -c "import struct, sys; sys.exit(0 if sys.implementation.name == 'cpython' and sys.version_info[:2] == (3, 11) and struct.calcsize('P') == 8 else 1)" *> $null
+        return $LASTEXITCODE -eq 0
+    } catch { return $false }
+}
+
+$python = $null
+if ($PythonExecutable) {
+    if (-not (Test-Python311 $PythonExecutable)) {
+        throw "Le fichier indique par -PythonExecutable doit etre un Python 3.11 x64 : $PythonExecutable"
+    }
+    $python = (Resolve-Path -LiteralPath $PythonExecutable).Path
+} else {
+    $pythonCandidates = @(
+        "$env:LOCALAPPDATA\Programs\Python\Python311\python.exe",
+        "$env:ProgramFiles\Python311\python.exe"
+    )
+    # Standard Python registrations also cover installations in a custom folder.
+    foreach ($key in @(
+        'HKCU:\Software\Python\PythonCore\3.11\InstallPath',
+        'HKLM:\Software\Python\PythonCore\3.11\InstallPath'
+    )) {
+        if (Test-Path -LiteralPath $key) {
+            $installPath = (Get-Item -LiteralPath $key).GetValue('')
+            if ($installPath) { $pythonCandidates += Join-Path $installPath 'python.exe' }
+        }
+    }
+    foreach ($candidate in ($pythonCandidates | Select-Object -Unique)) {
+        if (Test-Python311 $candidate) { $python = $candidate; break }
+    }
+    if (-not $python) {
+        $launcher = Get-Command py.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($launcher) {
+            try {
+                $reportedPaths = @(& $launcher.Source -3.11 -c 'import sys; print(sys.executable)' 2>$null)
+                if ($LASTEXITCODE -eq 0) {
+                    foreach ($candidate in $reportedPaths) {
+                        if (Test-Python311 ([string]$candidate)) { $python = [string]$candidate; break }
+                    }
+                }
+            } catch { } # An absent 3.11 must produce the installation message below.
+        }
+    }
+}
+if (-not $python) {
+    throw "Python 3.11 x64 introuvable. Installe https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe puis relance build-windows.cmd. Tu peux conserver Python 3.10."
+}
 $pythonCheck = "import struct, sys; assert sys.implementation.name == 'cpython' and sys.version_info[:2] == (3, 11) and struct.calcsize('P') == 8, 'CPython 3.11 x64 requis'; print('Python :', sys.version.split()[0], sys.executable)"
 Invoke-Checked $python @('-c', $pythonCheck)
 if (-not $InnoSetupCompiler) {
