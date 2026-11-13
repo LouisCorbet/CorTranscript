@@ -4,7 +4,6 @@ import importlib.util
 import json
 import os
 from pathlib import Path
-import shutil
 import threading
 import unittest
 
@@ -26,7 +25,7 @@ function tone(id) {
   const settings = track.getSettings.bind(track);
   track.getSettings = () => ({...settings(), deviceId: id});
   const stop = track.stop.bind(track);
-  track.stop = () => { stop(); context.close(); };
+  track.stop = () => { stop(); if (context.state !== "closed") context.close().catch(() => {}); };
   createdInputs.push({id, stream});
   return stream;
 }
@@ -104,7 +103,7 @@ class AudioBrowserTests(unittest.TestCase):
     def setUpClass(cls):
         from playwright.sync_api import sync_playwright
         cls.driver = sync_playwright().start()
-        binary = os.environ.get('CHROMIUM_BINARY') or shutil.which('chromium')
+        binary = os.environ.get('CHROMIUM_BINARY')
         cls.browser = cls.driver.chromium.launch(headless=True, executable_path=binary,
             args=['--no-sandbox', '--autoplay-policy=no-user-gesture-required'])
         cls.server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Handler)
@@ -136,6 +135,7 @@ class AudioBrowserTests(unittest.TestCase):
           const context = new AudioContext({sampleRate:16000});
           const source = context.createMediaStreamSource(stream), analyser = context.createAnalyser();
           analyser.fftSize = 4096;
+          analyser.smoothingTimeConstant = 0; // measure the current signal, not a smoothed history
           const mute = context.createGain(); mute.gain.value = 0;
           source.connect(analyser).connect(mute).connect(context.destination); await context.resume();
           const peaks = () => { const data = new Float32Array(analyser.frequencyBinCount); analyser.getFloatFrequencyData(data);
