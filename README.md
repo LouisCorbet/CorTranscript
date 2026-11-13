@@ -49,8 +49,8 @@ déjà ouvertes sont libérées.
 
 ## Installer sur un PC Windows
 
-Distribuer **`CorTranscript-Setup-1.1.0.exe`**, obtenu dans `dist/` ou dans les
-artefacts GitHub. Python, les bibliothèques et les modèles sont embarqués.
+Distribuer **`CorTranscript-Setup-1.1.0.exe`**, généré localement dans `dist/`
+avec le script de construction. Python, les bibliothèques et les modèles sont embarqués.
 Le destinataire n'a besoin d'installer ni Python ni Docker ni CUDA.
 
 1. Ouvrir l'installateur et autoriser l'installation.
@@ -63,7 +63,11 @@ Windows 10/11 x64 et un navigateur récent avec accès au microphone sont requis
 Les traitements se font sur le CPU. L'installateur n'est pas signé : Windows
 peut afficher un avertissement SmartScreen.
 
-## Construire l'installateur
+## Construire l'installateur localement
+
+La construction est manuelle : elle démarre uniquement lorsque tu exécutes
+`build-windows.cmd` sur ton PC Windows. Le dépôt ne contient aucun workflow
+GitHub Actions ; un push ne lance ni script, ni test, ni construction.
 
 Sur le PC de construction uniquement, installer :
 
@@ -84,13 +88,6 @@ Pour personnaliser la version et le modèle Whisper, depuis PowerShell :
 Choix de modèle : `tiny`, `base`, `small` (défaut), `medium`, `large-v3`.
 Le résultat est `dist\CorTranscript-Setup-<version>.exe`. C'est le fichier unique
 à partager. Les audios, transcriptions et `.env` du développeur sont exclus du paquet.
-
-### Depuis GitHub
-
-Dans **Actions → Windows installer → Run workflow**, choisir la version et le
-modèle. Télécharger ensuite l'artefact **CorTranscript-Windows** et décompresser
-son ZIP pour récupérer le `.exe`. Les artefacts sont conservés 14 jours.
-Les changements applicatifs poussés dans `main` déclenchent aussi la construction.
 
 ## Utilisation Docker
 
@@ -237,11 +234,10 @@ mélange, la perte d'une source, les refus d'autorisation, l'annulation et la
 libération des périphériques. Ils ne remplacent pas un essai de partage audio
 d'une vraie visio sur le navigateur du destinataire.
 
-Le workflow **Backend and audio mixing tests** exécute les tests backend et
-navigateur. Le workflow **Windows installer** vérifie les modèles embarqués,
-Kroko, DeepFilterNet et une transcription par morceaux sur un WAV silencieux.
-Il installe ensuite le `.exe` dans un chemin avec espaces et accent et le
-relance avec un `PATH` limité aux dossiers système Windows.
+Les commandes ci-dessus exécutent les tests manuellement sur ton PC.
+Lorsque tu lances `build-windows.cmd`, le script local vérifie les modèles
+embarqués, Kroko, DeepFilterNet et une transcription par morceaux sur un WAV
+silencieux avant de produire l'installateur.
 
 Depuis le dossier d'installation, pour rejouer ce diagnostic :
 
