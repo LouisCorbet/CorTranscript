@@ -14,11 +14,8 @@ from collections import OrderedDict
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
-from urllib.parse import urlparse
 
 import numpy as np
-import websockets
-import whisperx
 from fastapi import FastAPI, HTTPException, Request, Response, WebSocket
 from fastapi.responses import FileResponse
 
@@ -32,50 +29,28 @@ BEAM_CHUNKS = int(os.getenv("WHISPER_BEAM_CHUNKS", "5"))  # qualité du mode « 
 
 AUDIO_DIR = Path(os.getenv("AUDIO_DIR", "/audio"))
 TRANS_DIR = Path(os.getenv("TRANSCRIPTIONS_DIR", "/transcriptions"))
-WLK_URL = os.getenv("WLK_URL", "ws://wlk:8000/asr")
 SHERPA_DIR = Path(os.getenv("SHERPA_MODEL_DIR", "/models/sherpa"))
-SHERPA_MODEL = os.getenv("SHERPA_MODEL", "")  # nom de l'archive utilisée au build (sert à l'affichage)
 
 DF_BIN = os.getenv("DEEPFILTER_BIN", "/usr/local/bin/deep-filter")
 DF_AVAILABLE = os.path.exists(DF_BIN)
 
 SR = 16000
-SILENCE_RMS = 0.01     # seuil de silence (à ajuster selon ton micro)
-END_SILENCE = 0.8      # secondes de silence pour clore une phrase (mode live)
-PARTIAL_EVERY = 1.5    # secondes entre deux transcriptions partielles (mode live)
-MAX_UTTERANCE = 15     # secondes max avant coupure forcée (mode live)
 MIN_SAVE_SECONDS = 1   # un enregistrement plus court n'est pas conservé
 
 ID_RE = re.compile(r"^[0-9A-Za-z_\-]+$")
 
-# ---------------------------------------------------------------- modèle Whisper (mode live)
-print("Chargement du modèle Whisper…", flush=True)
-kwargs = dict(
-    compute_type=COMPUTE,
-    language=None if LANG == "auto" else LANG,
-    asr_options={"beam_size": 1},  # beaucoup plus rapide que le défaut (5)
-)
-try:
-    model = whisperx.load_model(MODEL, DEVICE, vad_method="silero", **kwargs)
-except TypeError:  # anciennes versions de whisperx
-    model = whisperx.load_model(MODEL, DEVICE, **kwargs)
-print("Modèle chargé.", flush=True)
-
+# ---------------------------------------------------------------- modèle Whisper (par morceaux uniquement)
 _fw = None
 _fw_lock = threading.Lock()
 
 
 def get_fw():
-    """Modèle faster-whisper brut (celui que WhisperX utilise en interne) pour le mode par morceaux."""
+    """Charge Whisper à la première transcription par morceaux, puis le réutilise."""
     global _fw
     with _fw_lock:
         if _fw is None:
-            inner = getattr(model, "model", None)
-            if inner is not None and hasattr(inner, "transcribe"):
-                _fw = inner
-            else:
-                from faster_whisper import WhisperModel
-                _fw = WhisperModel(MODEL, device=DEVICE, compute_type=COMPUTE)
+            from faster_whisper import WhisperModel
+            _fw = WhisperModel(MODEL, device=DEVICE, compute_type=COMPUTE)
     return _fw
 
 
@@ -127,21 +102,6 @@ def new_stamp(prefix: str, directory: Path, suffixes) -> str:
 
 
 # ---------------------------------------------------------------- réduction de bruit
-def denoise(audio: np.ndarray) -> np.ndarray:
-    """Réduction de bruit DeepFilterNet (binaire deep-filter), audio 16 kHz mono float32."""
-    with tempfile.TemporaryDirectory() as d:
-        src, out_dir = os.path.join(d, "in.wav"), os.path.join(d, "out")
-        with wave.open(src, "wb") as f:
-            f.setnchannels(1)
-            f.setsampwidth(2)
-            f.setframerate(SR)
-            f.writeframes((np.clip(audio, -1, 1) * 32767).astype(np.int16).tobytes())
-        subprocess.run([DF_BIN, "-o", out_dir, src], check=True, capture_output=True, timeout=120)
-        with wave.open(os.path.join(out_dir, "in.wav"), "rb") as f:
-            data = np.frombuffer(f.readframes(f.getnframes()), dtype=np.int16)
-    return data.astype(np.float32) / 32768.0
-
-
 def denoise_wav(data: bytes) -> bytes:
     """Débruite un fichier WAV complet (modale d'écoute comparative)."""
     with tempfile.TemporaryDirectory() as d:
@@ -203,158 +163,6 @@ class DocSocket:
         return getattr(self._ws, name)
 
 
-# ================================================================ MODE LIVE
-def transcribe_live(audio: np.ndarray, use_denoise: bool = False) -> str:
-    if use_denoise:
-        try:
-            audio = denoise(audio)
-        except Exception:
-            traceback.print_exc()  # en cas d'échec, on transcrit l'audio brut
-    result = model.transcribe(audio, batch_size=8)
-    return " ".join(s["text"].strip() for s in result["segments"]).strip()
-
-
-async def live_whisper(ws, doc: LiveDoc):
-    loop = asyncio.get_running_loop()
-    buf = np.zeros(0, dtype=np.float32)
-    speech, silence, since_partial = False, 0, 0
-    denoise_on = False
-    partial_gap = PARTIAL_EVERY  # s'allonge automatiquement si le PC n'arrive pas à suivre
-
-    async def run(kind: str):
-        nonlocal partial_gap
-        t0 = time.perf_counter()
-        # La réduction de bruit ne s'applique qu'à la version finale (celle écrite dans le .txt)
-        use_df = denoise_on and kind == "final"
-        text = await loop.run_in_executor(executor, transcribe_live, buf.copy(), use_df)
-        partial_gap = max(PARTIAL_EVERY, 2 * (time.perf_counter() - t0))
-        if text:
-            out = {"type": kind, "text": text}
-            if kind == "final":
-                out["n"] = doc.add_final(text)
-            await ws.send_json(out)
-
-    while True:
-        msg = await ws.receive()
-        if msg["type"] == "websocket.disconnect":
-            break
-
-        if msg.get("text") is not None:  # message de contrôle (ex. {"denoise": true})
-            try:
-                cfg = json.loads(msg["text"])
-            except ValueError:
-                continue
-            if "denoise" in cfg:
-                denoise_on = bool(cfg["denoise"]) and DF_AVAILABLE
-                await ws.send_json({"type": "info", "available": DF_AVAILABLE, "denoise": denoise_on})
-            continue
-
-        data = msg.get("bytes")
-        if not data:
-            continue
-
-        chunk = np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0
-        rms = float(np.sqrt(np.mean(chunk**2))) if len(chunk) else 0.0
-
-        if rms >= SILENCE_RMS:
-            speech, silence = True, 0
-        else:
-            silence += len(chunk)
-
-        buf = np.concatenate([buf, chunk])
-        since_partial += len(chunk)
-
-        if not speech:
-            buf = buf[-int(0.3 * SR):]
-            continue
-
-        if silence >= END_SILENCE * SR or len(buf) >= MAX_UTTERANCE * SR:
-            await run("final")
-            buf = np.zeros(0, dtype=np.float32)
-            speech, silence, since_partial = False, 0, 0
-        elif since_partial >= partial_gap * SR:
-            since_partial = 0
-            await run("partial")
-
-
-async def live_wlk(ws, doc: LiveDoc):
-    """Pont vers un serveur WhisperLiveKit (protocole /asr, entrée PCM 16 kHz)."""
-    try:
-        up = await websockets.connect(f"{WLK_URL}?language={LANG}", max_size=None, open_timeout=5)
-    except Exception:
-        await ws.send_json({"type": "error", "text": "WhisperLiveKit est injoignable (service non démarré ?)"})
-        return
-
-    committed = 0          # nombre de lignes déjà figées (écrites dans le fichier)
-    last_lines, last_buf = [], ""
-
-    async def send_safe(obj):
-        try:
-            await ws.send_json(obj)
-        except Exception:
-            pass
-
-    async def finalize(text: str):
-        text = text.strip()
-        if not text:
-            return
-        n = doc.add_final(text)
-        await send_safe({"type": "final", "text": text, "n": n})
-
-    async def pump():
-        nonlocal committed, last_lines, last_buf
-        async for raw in up:
-            if isinstance(raw, bytes):
-                continue
-            try:
-                msg = json.loads(raw)
-            except ValueError:
-                continue
-            kind = msg.get("type")
-            if kind == "config":
-                continue
-            if kind == "ready_to_stop":
-                break
-            if msg.get("status") == "error" or msg.get("error"):
-                await send_safe({"type": "error", "text": str(msg.get("error") or "erreur WhisperLiveKit")})
-                continue
-            lines = [l for l in msg.get("lines", []) if (l.get("text") or "").strip()]
-            buf = (msg.get("buffer_transcription") or "").strip()
-            last_lines, last_buf = lines, buf
-            # Une ligne n'est figée que lorsqu'une ligne plus récente existe (la dernière peut encore grandir).
-            stable = lines[:-1]
-            for line in stable[committed:]:
-                await finalize(line["text"])
-            committed = max(committed, len(stable))
-            pending = [l["text"].strip() for l in lines[committed:]]
-            await send_safe({"type": "partial", "text": " ".join([*pending, buf]).strip()})
-        # fin du flux : on fige ce qui reste
-        for line in last_lines[committed:]:
-            await finalize(line["text"])
-        committed = len(last_lines)
-        await finalize(last_buf)
-
-    pump_task = asyncio.create_task(pump())
-    try:
-        while True:
-            msg = await ws.receive()
-            if msg["type"] == "websocket.disconnect":
-                break
-            data = msg.get("bytes")
-            if data:
-                await up.send(data)
-    finally:
-        try:
-            await up.send(b"")  # signal de fin d'audio
-            await asyncio.wait_for(pump_task, 20)
-        except Exception:
-            pump_task.cancel()
-        try:
-            await up.close()
-        except Exception:
-            pass
-
-
 # ---------------------------------------------------------------- streaming réel (sherpa-onnx)
 sherpa_rec = None
 sherpa_executor = ThreadPoolExecutor(max_workers=1)
@@ -387,11 +195,6 @@ def load_sherpa():
     except Exception:
         traceback.print_exc()
         sherpa_rec = None
-
-
-def sherpa_name() -> str:
-    kind = "Zipformer FR" if SHERPA_MODEL and "kroko" not in SHERPA_MODEL.lower() else "Kroko FR"
-    return f"Streaming temps réel ({kind})"
 
 
 def _sherpa_text(stream) -> str:
@@ -456,10 +259,6 @@ async def live_sherpa(ws, doc: LiveDoc):
         rest = await loop.run_in_executor(sherpa_executor, _sherpa_flush, stream)
         if rest:
             await final(rest)
-
-
-# Pour ajouter un moteur : écrire un handler async (ws, path) et l'ajouter ici et dans /api/engines.
-LIVE_HANDLERS = {"whisper": live_whisper, "sherpa": live_sherpa, "whisperlivekit": live_wlk}
 
 
 # ================================================================ MODE PAR MORCEAUX : état
@@ -818,49 +617,22 @@ def api_session(name: str):
 
 
 # ================================================================ MODE LIVE : routes
-async def wlk_reachable() -> bool:
-    url = urlparse(WLK_URL)
-    try:
-        _, writer = await asyncio.wait_for(asyncio.open_connection(url.hostname, url.port or 80), 0.8)
-        writer.close()
-        return True
-    except Exception:
-        return False
-
-
 @app.get("/api/engines")
 async def api_engines():
-    wlk_ok = await wlk_reachable()
     return {
         "deepfilter": DF_AVAILABLE,
-        "engines": [
-            {
-                "id": "whisper", "name": "Whisper (faster-whisper)", "available": True, "supports_denoise": True,
-                "note": "Transcrit phrase par phrase, après chaque pause : précis, mais le texte arrive par à-coups.",
-            },
-            {
-                "id": "sherpa", "name": sherpa_name(), "available": sherpa_rec is not None, "supports_denoise": False,
-                "note": "Vrai streaming : le texte s'écrit en continu pendant que tu parles. Modèle léger, moins précis que Whisper."
-                        + (" Le modèle Kroko est sous licence non commerciale." if "kroko" in (SHERPA_MODEL or "kroko").lower() else ""),
-                "hint": "Le modèle de streaming est introuvable : réinstalle CorTranscript ou reconstruis son image Docker.",
-            },
-            {
-                "id": "whisperlivekit", "name": "WhisperLiveKit", "available": wlk_ok, "supports_denoise": False,
-                "note": "Whisper en pseudo-streaming (fenêtres glissantes) : les mots se figent avec quelques secondes de retard.",
-                "hint": "WhisperLiveKit n'est pas encore prêt (il charge son modèle au démarrage) : patiente un moment ou consulte les journaux de CorTranscript.",
-            },
-        ],
+        "engines": [{
+            "id": "sherpa", "name": "Kroko FR", "available": sherpa_rec is not None,
+            "supports_denoise": False,
+            "note": "Transcription française en streaming avec Kroko. Modèle sous licence non commerciale.",
+            "hint": "Le modèle Kroko est introuvable : réinstalle CorTranscript ou reconstruis son image Docker.",
+        }],
     }
 
 
 @app.websocket("/ws")
 async def ws_live(ws: WebSocket):
     await ws.accept()
-    handler = LIVE_HANDLERS.get(ws.query_params.get("engine", "whisper"))
-    if handler is None:
-        await ws.send_json({"type": "error", "text": "moteur inconnu"})
-        await ws.close()
-        return
     TRANS_DIR.mkdir(parents=True, exist_ok=True)
     name = new_stamp("transcription_", TRANS_DIR, (".txt",))
     path = TRANS_DIR / f"{name}.txt"
@@ -870,7 +642,7 @@ async def ws_live(ws: WebSocket):
     while len(LIVE_DOCS) > 50:
         LIVE_DOCS.popitem(last=False)
     await ws.send_json({"type": "info", "available": DF_AVAILABLE, "file": name})
-    await handler(DocSocket(ws), doc)
+    await live_sherpa(DocSocket(ws), doc)
 
 
 @app.post("/api/live/edit")
@@ -918,3 +690,8 @@ async def health():
 @app.get("/")
 async def index():
     return FileResponse(APP_DIR / "index.html")
+
+
+@app.get("/audio-inputs.js")
+async def audio_inputs_script():
+    return FileResponse(APP_DIR / "audio-inputs.js", media_type="application/javascript")

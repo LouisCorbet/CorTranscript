@@ -1,5 +1,5 @@
 #ifndef AppVersion
-  #define AppVersion "1.0.0"
+  #define AppVersion "1.1.0"
 #endif
 #ifndef BundleDir
   #define BundleDir "..\build\windows\CorTranscript"
@@ -36,6 +36,16 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "Créer un raccourci sur le Bureau"; Flags: unchecked
+
+; Remove only application-owned directories when upgrading. User recordings
+; live under LOCALAPPDATA and are intentionally outside this cleanup.
+[InstallDelete]
+Type: filesandordirs; Name: "{app}\runtime"
+Type: filesandordirs; Name: "{app}\app"
+Type: filesandordirs; Name: "{app}\models"
+Type: filesandordirs; Name: "{app}\bin"
+Type: filesandordirs; Name: "{app}\_internal"
+Type: filesandordirs; Name: "{app}\licenses"
 
 [Files]
 Source: "{#BundleDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs

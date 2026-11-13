@@ -17,9 +17,6 @@ class PackagingTests(unittest.TestCase):
             bundle = Path(temporary) / 'Bureau de Louis' / 'CorTranscript installé'
             bundle.mkdir(parents=True)
             (bundle / 'config.json').write_text(json.dumps({'sherpa_model': 'French-model'}))
-            cache = bundle / 'models' / 'torch'
-            cache.mkdir(parents=True)
-            (cache / 'model.jit').write_bytes(b'test')
             data = Path(temporary) / 'Profil élève' / 'CorTranscript'
             with patch.dict(os.environ, {'PYTHONPATH': '/wrong', 'PYTHONHOME': '/wrong', 'WHISPER_DEVICE': 'cuda', 'HF_TOKEN': 'do-not-package'}):
                 env = launcher.runtime_environment(bundle, data)
@@ -29,11 +26,7 @@ class PackagingTests(unittest.TestCase):
             self.assertNotIn('PYTHONHOME', env)
             self.assertNotIn('PYTHONPATH', env)
             self.assertNotIn('HF_TOKEN', env)
-            self.assertEqual((data / 'cache' / 'torch' / 'model.jit').read_bytes(), b'test')
-            # Existing user cache is retained on the next launch.
-            (data / 'cache' / 'torch' / 'model.jit').write_bytes(b'user cache')
-            launcher.runtime_environment(bundle, data)
-            self.assertEqual((data / 'cache' / 'torch' / 'model.jit').read_bytes(), b'user cache')
+            self.assertTrue((data / 'cache').is_dir())
 
     def test_status_request_never_uses_environment_proxy(self):
         import http.server

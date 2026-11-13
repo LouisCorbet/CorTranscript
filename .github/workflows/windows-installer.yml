@@ -5,7 +5,7 @@ on:
     inputs:
       version:
         description: Installer version
-        default: '1.0.0'
+        default: '1.1.0'
         required: true
       model:
         description: Whisper model to bundle
@@ -17,6 +17,8 @@ on:
     paths:
       - 'app.py'
       - 'index.html'
+      - 'audio-inputs.js'
+      - 'requirements.txt'
       - 'packaging/**'
       - 'scripts/build-windows.ps1'
       - '.github/workflows/windows-installer.yml'
@@ -24,6 +26,8 @@ on:
     paths:
       - 'app.py'
       - 'index.html'
+      - 'audio-inputs.js'
+      - 'requirements.txt'
       - 'packaging/**'
       - 'scripts/build-windows.ps1'
       - '.github/workflows/windows-installer.yml'
@@ -49,7 +53,7 @@ jobs:
       - name: Build and check installer
         shell: powershell
         env:
-          BUILD_VERSION: ${{ inputs.version || '1.0.0' }}
+          BUILD_VERSION: ${{ inputs.version || '1.1.0' }}
           BUILD_MODEL: ${{ inputs.model || 'small' }}
         run: ./scripts/build-windows.ps1 -Version $env:BUILD_VERSION -Model $env:BUILD_MODEL
       - name: Test installation without Python or Docker on PATH
@@ -59,6 +63,21 @@ jobs:
           $installDir = Join-Path $env:RUNNER_TEMP 'CorTranscript installé'
           $install = Start-Process -FilePath $installer.FullName -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=`"$installDir`"") -Wait -PassThru
           if ($install.ExitCode -notin @(0, 3010)) { throw "Installer exited $($install.ExitCode)" }
+          # Simulate leftovers from the old distribution and verify a reinstall
+          # removes them while preserving recordings outside the installation.
+          $legacy = Join-Path $installDir 'runtime\Lib\site-packages\obsolete-dependency.txt'
+          Set-Content -LiteralPath $legacy -Value 'obsolete'
+          $legacyModelDir = Join-Path $installDir 'models\obsolete-live-model'
+          New-Item -ItemType Directory -Path $legacyModelDir -Force | Out-Null
+          $userData = Join-Path $env:LOCALAPPDATA 'CorTranscript\transcriptions'
+          New-Item -ItemType Directory -Path $userData -Force | Out-Null
+          $sentinel = Join-Path $userData 'upgrade-preserved-test.txt'
+          Set-Content -LiteralPath $sentinel -Value 'preserve'
+          $reinstall = Start-Process -FilePath $installer.FullName -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=`"$installDir`"") -Wait -PassThru
+          if ($reinstall.ExitCode -notin @(0, 3010)) { throw "Reinstall exited $($reinstall.ExitCode)" }
+          if ((Test-Path -LiteralPath $legacy) -or (Test-Path -LiteralPath $legacyModelDir)) { throw 'Obsolete application files survived the upgrade' }
+          if (-not (Test-Path -LiteralPath $sentinel)) { throw 'Upgrade removed user data' }
+          Remove-Item -LiteralPath $sentinel
           $oldPath = $env:PATH
           try {
             $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"

@@ -1,11 +1,7 @@
-"""Télécharge le modèle Whisper pendant le build de l'image (et non au premier lancement)."""
+"""Précharge le modèle Whisper du mode par morceaux pendant le build Docker."""
 import os
-
-import whisperx
+from faster_whisper import WhisperModel
 
 model = os.environ.get("WHISPER_MODEL", "small")
-try:
-    whisperx.load_model(model, "cpu", compute_type="int8", vad_method="silero")
-except TypeError:  # anciennes versions de whisperx
-    whisperx.load_model(model, "cpu", compute_type="int8")
+WhisperModel(model, device="cpu", compute_type="int8")
 print("Modèle Whisper prêt :", model)

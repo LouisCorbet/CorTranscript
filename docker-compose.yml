@@ -10,28 +10,11 @@ services:
     environment:
       WHISPER_MODEL: ${WHISPER_MODEL:-small} # tiny / base / small / medium / large-v3
       WHISPER_LANGUAGE: ${WHISPER_LANGUAGE:-fr} # "auto" pour détection automatique
-      SHERPA_MODEL: ${SHERPA_MODEL:-sherpa-onnx-streaming-zipformer-fr-kroko-2025-08-06}
       WHISPER_DEVICE: cpu
       WHISPER_COMPUTE_TYPE: int8
       WHISPER_BEAM_CHUNKS: 5 # qualité du mode « par morceaux » (1 = plus rapide, 5 = plus précis)
-      WLK_URL: ws://wlk:8000/asr
     volumes:
       - ./transcriptions:/transcriptions # fichiers texte (et données des mots)
       - ./audio:/audio # enregistrements du mode « par morceaux »
       - .:/app
-    restart: unless-stopped
-
-  # WhisperLiveKit : moteur de transcription live supplémentaire
-  wlk:
-    build:
-      context: ./wlk
-      args:
-        WLK_MODEL: ${WHISPER_MODEL:-small}
-    command:
-      [
-        "--model",
-        "${WHISPER_MODEL:-small}",
-        "--language",
-        "${WHISPER_LANGUAGE:-fr}",
-      ]
     restart: unless-stopped

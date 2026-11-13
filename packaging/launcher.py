@@ -2,7 +2,6 @@
 import json
 import os
 from pathlib import Path
-import shutil
 import socket
 import subprocess
 import sys
@@ -30,16 +29,12 @@ def read_status(url):
 
 
 def runtime_environment(bundle, data):
-    config = json.loads((bundle / 'config.json').read_text('utf-8'))
     env = os.environ.copy()
     # Ignore the build machine's or user's Python/ML configuration.
     for key in ('PYTHONHOME', 'PYTHONPATH', 'HF_TOKEN', 'HUGGING_FACE_HUB_TOKEN'):
         env.pop(key, None)
     for name in ('audio', 'transcriptions', 'logs', 'cache'):
         (data / name).mkdir(parents=True, exist_ok=True)
-    torch_cache = data / 'cache' / 'torch'
-    if not torch_cache.exists():
-        shutil.copytree(bundle / 'models' / 'torch', torch_cache)
     env.update({
         'CORTRANSCRIPT_DESKTOP': '1',
         'WHISPER_MODEL': str(bundle / 'models' / 'whisper'),
@@ -48,15 +43,11 @@ def runtime_environment(bundle, data):
         'WHISPER_COMPUTE_TYPE': 'int8', 'WHISPER_BEAM_CHUNKS': '5',
         'AUDIO_DIR': str(data / 'audio'), 'TRANSCRIPTIONS_DIR': str(data / 'transcriptions'),
         'SHERPA_MODEL_DIR': str(bundle / 'models' / 'sherpa'),
-        'SHERPA_MODEL': config['sherpa_model'],
         'DEEPFILTER_BIN': str(bundle / 'bin' / 'deep-filter.exe'),
         'HF_HOME': str(data / 'cache' / 'huggingface'),
-        'TORCH_HOME': str(torch_cache), 'HF_HUB_OFFLINE': '1',
+        'HF_HUB_OFFLINE': '1',
         'HF_HUB_DISABLE_TELEMETRY': '1', 'PYTHONUNBUFFERED': '1',
         'PYTHONIOENCODING': 'utf-8',
-        'NUMBA_CACHE_DIR': str(data / 'cache' / 'numba'),
-        'MPLCONFIGDIR': str(data / 'cache' / 'matplotlib'),
-        'PATH': str(bundle / 'bin') + os.pathsep + env.get('PATH', ''),
     })
     return env
 
@@ -66,7 +57,6 @@ class Services:
         self.bundle, self.data = bundle, data
         self.processes, self.logs = [], []
         self.url = None
-        self.wlk_url = None
 
     def start(self):
         # PyInstaller changes the DLL search path for its own runtime. External
@@ -76,35 +66,28 @@ class Services:
             ctypes.windll.kernel32.SetDllDirectoryW(None)
         env = runtime_environment(self.bundle, self.data)
         app_port = free_port()
-        wlk_port = free_port()
-        while wlk_port == app_port:
-            wlk_port = free_port()
         self.url = f'http://127.0.0.1:{app_port}'
-        self.wlk_url = f'http://127.0.0.1:{wlk_port}'
-        env['WLK_URL'] = f'ws://127.0.0.1:{wlk_port}/asr'
-        for mode, port in [('wlk', wlk_port), ('app', app_port)]:
-            log = (self.data / 'logs' / f'{mode}.log').open('w', encoding='utf-8')
-            self.logs.append(log)
-            self.processes.append(subprocess.Popen(
-                [str(self.bundle / 'runtime' / 'python.exe'),
-                 str(self.bundle / 'app' / 'windows_server.py'), mode, '--port', str(port)],
-                cwd=self.bundle / 'app', env=env, stdout=log, stderr=subprocess.STDOUT,
-                creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0)))
+        log = (self.data / 'logs' / 'app.log').open('w', encoding='utf-8')
+        self.logs.append(log)
+        self.processes.append(subprocess.Popen(
+            [str(self.bundle / 'runtime' / 'python.exe'),
+             str(self.bundle / 'app' / 'windows_server.py'), '--port', str(app_port)],
+            cwd=self.bundle / 'app', env=env, stdout=log, stderr=subprocess.STDOUT,
+            creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0)))
 
     def ready(self):
         for process in self.processes:
             if process.poll() is not None:
                 raise RuntimeError('Un moteur s’est arrêté. Consulte les journaux pour connaître la cause.')
         try:
-            return (read_status(self.url + '/api/health').get('application') == 'CorTranscript'
-                    and read_status(self.wlk_url + '/health').get('ready') is True)
+            return read_status(self.url + '/api/health').get('application') == 'CorTranscript'
         except (OSError, ValueError):
             return False
 
     def stop(self):
         for process in reversed(self.processes):
             if process.poll() is None:
-                # Includes FFmpeg children if an audio treatment is in progress.
+                # Includes child processes if an audio treatment is in progress.
                 subprocess.run(['taskkill', '/PID', str(process.pid), '/T', '/F'],
                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                                creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0), timeout=20)
@@ -129,7 +112,8 @@ def smoke_test(bundle):
                     raise TimeoutError('Packaged engines did not become ready within 10 minutes')
                 time.sleep(1)
             engines = read_status(services.url + '/api/engines')
-            if not engines['deepfilter'] or not all(e['available'] for e in engines['engines']):
+            if (not engines['deepfilter'] or [e['id'] for e in engines['engines']] != ['sherpa']
+                    or not all(e['available'] for e in engines['engines'])):
                 raise RuntimeError(f'Packaged engine unavailable: {engines}')
             # Test binary execution and WAV round-trip, not just the existence of an .exe.
             import io
@@ -146,7 +130,24 @@ def smoke_test(bundle):
             with opener.open(request, timeout=120) as response:
                 with wave.open(io.BytesIO(response.read())) as result:
                     assert result.getnframes() > 0
-            print('CorTranscript packaged runtime: all engines and denoising ready.', flush=True)
+            # Verify the lazy Whisper path using an actual recorded-format WAV.
+            audio_id = '2000-01-01_00-00-00'
+            (services.data / 'audio' / (audio_id + '.wav')).write_bytes(audio.getvalue())
+            request = urllib.request.Request(services.url + '/api/transcribe/start', data=b'{}',
+                                             headers={'Content-Type': 'application/json'})
+            with opener.open(request, timeout=10) as response:
+                assert json.load(response)['ok']
+            deadline = time.monotonic() + 180
+            while True:
+                state = read_status(services.url + '/api/state')
+                if not state['job']['active']:
+                    break
+                if time.monotonic() > deadline:
+                    raise TimeoutError('Packaged Whisper chunk transcription timed out')
+                time.sleep(0.25)
+            if not any(item['id'] == audio_id and item['transcribed'] for item in state['audios']):
+                raise RuntimeError(f'Packaged chunk transcription failed: {state}')
+            print('CorTranscript packaged runtime: Kroko, Whisper chunks and denoising ready.', flush=True)
         except Exception:
             for path in (Path(temporary) / 'logs').glob('*.log'):
                 print(path.name, path.read_text('utf-8', errors='replace')[-20000:], flush=True)
@@ -198,7 +199,7 @@ def main():
     root.title('CorTranscript')
     root.geometry('520x210')
     root.resizable(False, False)
-    status = tk.StringVar(value='Chargement des moteurs de transcription…')
+    status = tk.StringVar(value='Chargement de Kroko…')
     tk.Label(root, text='CorTranscript', font=('Segoe UI', 20, 'bold')).pack(pady=(20, 12))
     tk.Label(root, textvariable=status, wraplength=480).pack(pady=5)
     services = Services(bundle, data)

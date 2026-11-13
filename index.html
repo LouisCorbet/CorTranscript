@@ -64,7 +64,13 @@
   select { width: 100%; }
   select:focus, input[type=number]:focus { border-color: var(--accent); }
   select:disabled, input:disabled { opacity: .55; }
-  #device { margin-top: .8rem; }
+  .audio-inputs { display: grid; gap: .4rem; margin: .8rem 0; }
+  .audio-source { display: flex; align-items: center; gap: .7rem; padding: .7rem .8rem;
+    margin: .5rem 0; border: 1px solid var(--border); border-radius: 10px;
+    background: var(--surface-2); cursor: pointer; }
+  .audio-source:has(input:checked) { border-color: var(--accent); }
+  .audio-source input { width: 18px; height: 18px; accent-color: var(--accent); flex: none; }
+  .audio-source span { overflow-wrap: anywhere; }
 
   .test { display: flex; align-items: center; gap: .9rem; margin-top: .9rem; }
   .meter { position: relative; flex: 1; height: 10px; background: var(--bg); border: 1px solid var(--border); border-radius: 999px; overflow: hidden; }
@@ -188,12 +194,12 @@
   <!-- Cartes partagées par les pages « Live » et « Par morceaux » -->
   <div id="shared">
     <section class="card">
-      <h2>Entrée audio</h2>
-      <div class="seg" role="radiogroup" aria-label="Source audio">
-        <input type="radio" name="source" id="src-mic" value="mic" checked><label for="src-mic">Micro</label>
-        <input type="radio" name="source" id="src-system" value="system"><label for="src-system">Son de l'ordinateur</label>
-      </div>
-      <select id="device" aria-label="Micro"></select>
+      <h2>Entrées audio</h2>
+      <p class="hint">Coche les sources à mélanger avant la transcription.</p>
+      <div id="devices" class="audio-inputs" role="group" aria-label="Micros et entrées audio"></div>
+      <button id="refreshDevices" class="btn ghost small">Actualiser les micros</button>
+      <label class="audio-source"><input type="checkbox" id="systemAudio"> <span>Son de l’ordinateur / visio</span></label>
+      <p id="captureStatus" class="hint" role="status" aria-live="polite"></p>
       <div class="test">
         <button id="test" class="btn ghost">Tester</button>
         <div class="meter"><div id="bar" class="bar"></div><div class="tick" title="Seuil de détection de la parole"></div></div>
@@ -201,8 +207,8 @@
       <p id="hint" class="hint"></p>
     </section>
 
-    <section class="card">
-      <h2>Traitement</h2>
+    <section class="card" id="processingCard">
+      <h2>Traitement des morceaux</h2>
       <label class="switch-row">
         <span>
           <strong>Réduction de bruit</strong>
@@ -217,8 +223,8 @@
   <!-- ===================== PAGE 1 : LIVE ===================== -->
   <section id="page-live" class="page">
     <section class="card">
-      <h2>Moteur de transcription</h2>
-      <select id="engine" aria-label="Moteur de transcription"></select>
+      <h2>Transcription en direct</h2>
+      <strong>Kroko FR</strong>
       <p id="engineNote" class="hint"></p>
     </section>
 
@@ -305,6 +311,7 @@
   <p id="mstatus" class="hint"></p>
 </dialog>
 
+<script src="/audio-inputs.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 const fmtTime = (s) => { s = Math.max(0, Math.floor(s)); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); };
@@ -321,12 +328,15 @@ function idToDate(id) {
 
 // ---------- éléments ----------
 const tabs = [...document.querySelectorAll(".tab")];
-const sourceRadios = [...document.querySelectorAll('input[name="source"]')];
-const deviceEl = $("device"), testBtn = $("test"), bar = $("bar"), hint = $("hint");
+const devicesEl = $("devices"), systemAudioEl = $("systemAudio"), refreshDevicesBtn = $("refreshDevices");
+const captureStatusEl = $("captureStatus"), testBtn = $("test"), bar = $("bar"), hint = $("hint");
+const { captureMixedAudio, releaseAudio } = CorAudio;
+let devicesLoaded = false;
+const microphoneIds = () => [...devicesEl.querySelectorAll("input:checked")].map(input => input.value);
 const denoiseEl = $("denoise"), denoiseNote = $("denoiseNote"), openModalBtn = $("openModal");
 const pill = $("pill"), pillText = $("pillText");
 // live
-const engineEl = $("engine"), engineNote = $("engineNote");
+const engineNote = $("engineNote");
 const btn = $("btn"), statusEl = $("status"), outEl = $("out"), emptyEl = $("empty"), finalEl = $("final"), partialEl = $("partial"), saveStateEl = $("saveState");
 // par morceaux
 const durRadios = [...document.querySelectorAll('input[name="dur"]')], durCustom = $("durCustom"), durRow = $("durRow");
@@ -340,7 +350,6 @@ const modal = $("modal"), mrec = $("mrec"), mtime = $("mtime"), mbar = $("mbar")
 const mresult = $("mresult"), mstatus = $("mstatus"), msource = $("msource"), player = $("player");
 const abRadios = [...document.querySelectorAll('input[name="ab"]')];
 
-const source = () => sourceRadios.find(r => r.checked).value;
 const SILENCE_RMS = 0.01;
 const SR = 16000;
 
@@ -348,7 +357,7 @@ const workletCode = `
 class Rec extends AudioWorkletProcessor {
   constructor() { super(); this.buf = []; this.n = 0; }
   process(inputs) {
-    const ch = inputs[0][0];
+    const ch = inputs[0]?.[0];
     if (ch) {
       this.buf.push(new Float32Array(ch)); this.n += ch.length;
       if (this.n >= 4096) {
@@ -367,11 +376,17 @@ registerProcessor("rec", Rec);`;
 async function openRecorder(stream, onChunk) {
   const audioCtx = new AudioContext({ sampleRate: SR });
   const url = URL.createObjectURL(new Blob([workletCode], { type: "application/javascript" }));
-  await audioCtx.audioWorklet.addModule(url);
+  try { await audioCtx.audioWorklet.addModule(url); }
+  catch (error) { await audioCtx.close(); throw error; }
+  finally { URL.revokeObjectURL(url); }
   const src = audioCtx.createMediaStreamSource(stream);
   const node = new AudioWorkletNode(audioCtx, "rec", { channelCount: 1, channelCountMode: "explicit" });
   node.port.onmessage = (e) => onChunk(e.data);
   src.connect(node);
+  const silent = audioCtx.createGain();
+  silent.gain.value = 0;
+  node.connect(silent).connect(audioCtx.destination);
+  await audioCtx.resume();
   return { audioCtx, src };
 }
 
@@ -380,17 +395,17 @@ const live = { running: false, ws: null, closing: null, stream: null, ctx: null,
 const chunk = { recording: false, ws: null, stream: null, ctx: null, stopMeter: null, segSamples: 0, silentRun: 0, noise: null };
 let testing = false, testCtx, testStream, stopTestMeter;
 let currentPage = "live";
-let engines = [], denoiseAvailable = true;
+let denoiseAvailable = false, krokoAvailable = false, startingCapture = false, captureController = null;
 
 function applyLocks() {
-  const busy = live.running || chunk.recording;
+  const busy = live.running || chunk.recording || startingCapture;
   testBtn.disabled = busy;
-  openModalBtn.disabled = busy;
-  deviceEl.disabled = busy;
-  sourceRadios.forEach(r => r.disabled = busy);
-  engineEl.disabled = live.running;
-  btn.disabled = chunk.recording;
-  recBtn.disabled = live.running;
+  openModalBtn.disabled = busy || !denoiseAvailable;
+  devicesEl.querySelectorAll("input").forEach(input => input.disabled = busy);
+  systemAudioEl.disabled = busy || !navigator.mediaDevices?.getDisplayMedia;
+  refreshDevicesBtn.disabled = busy;
+  btn.disabled = chunk.recording || startingCapture || !krokoAvailable;
+  recBtn.disabled = live.running || startingCapture;
 }
 
 function setState(kind, text) {
@@ -413,6 +428,7 @@ function showPage(p) {
   $("shared").hidden = p === "viewer";
   tabs.forEach(t => t.classList.toggle("active", t.dataset.page === p));
   history.replaceState(null, "", "#" + p);
+  $("processingCard").hidden = p !== "chunks";
   updateDenoiseUi();
   updateHints();
   if (p === "chunks") refreshState();
@@ -421,40 +437,40 @@ function showPage(p) {
 tabs.forEach(t => t.onclick = () => showPage(t.dataset.page));
 
 // ---------- périphériques ----------
-async function refreshDevices(selectedId) {
-  const keep = selectedId ?? deviceEl.value;
-  const devs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "audioinput");
-  deviceEl.innerHTML = "";
-  devs.forEach((d, i) => {
-    const o = document.createElement("option");
-    o.value = d.deviceId;
-    o.textContent = d.label || ("Entrée audio " + (i + 1));
-    deviceEl.appendChild(o);
+async function refreshDevices() {
+  const keep = new Set(microphoneIds());
+  const devs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "audioinput" && d.deviceId !== "communications");
+  const physical = devs.filter(d => d.deviceId && d.deviceId !== "default");
+  const entries = physical.length ? physical : [{ deviceId: "default", label: "Micro par défaut" }];
+  devicesEl.replaceChildren();
+  entries.forEach((device, index) => {
+    const label = document.createElement("label");
+    label.className = "audio-source";
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.value = device.deviceId;
+    input.checked = keep.has(device.deviceId) || (index === 0 && (!devicesLoaded || keep.has("default")));
+    input.onchange = () => { if (testing) stopTest(); updateHints(); };
+    const text = document.createElement("span");
+    text.textContent = device.label || "Entrée audio " + (index + 1);
+    label.append(input, text);
+    devicesEl.append(label);
   });
-  if ([...deviceEl.options].some(o => o.value === keep)) deviceEl.value = keep;
+  devicesLoaded = true;
+  applyLocks();
+  updateHints();
 }
 
 async function getStream() {
-  if (source() === "system") {
-    const s = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
-    if (!s.getAudioTracks().length) {
-      s.getTracks().forEach(t => t.stop());
-      throw new Error("aucun son partagé (coche l'option de partage de l'audio)");
-    }
-    return s;
-  }
-  const id = deviceEl.value;
-  const s = await navigator.mediaDevices.getUserMedia({
-    audio: {
-      deviceId: id ? { exact: id } : undefined,
-      channelCount: 1,
-      echoCancellation: false,
-      noiseSuppression: false,
-      autoGainControl: true,
+  return captureMixedAudio({
+    microphoneIds: microphoneIds(), systemAudio: systemAudioEl.checked, signal: captureController?.signal,
+    onSourcesChanged: state => {
+      captureStatusEl.textContent = state
+        ? (state.ended ? "Source arrêtée : " + state.ended + ". " : "")
+          + (state.labels.length ? "Sources actives : " + state.labels.join(" + ") : "Toutes les sources sont arrêtées.")
+        : "";
     },
   });
-  await refreshDevices(s.getAudioTracks()[0].getSettings().deviceId); // les noms apparaissent après autorisation
-  return s;
 }
 
 // ---------- indicateur de niveau ----------
@@ -479,84 +495,82 @@ function startMeter(audioCtx, srcNode, barEl) {
 async function startTest() {
   try {
     testStream = await getStream();
+    testStream.getAudioTracks()[0].onended = () => stopTest();
     testCtx = new AudioContext();
     stopTestMeter = startMeter(testCtx, testCtx.createMediaStreamSource(testStream), bar);
     testing = true;
     testBtn.textContent = "Arrêter le test";
     setStatus("");
-  } catch (err) { setStatus("Erreur : " + err.message, true); }
+  } catch (err) { stopTest(); setStatus("Erreur : " + err.message, true); }
+}
+function closeAudioContext(context) {
+  if (context && context.state !== "closed") context.close().catch(() => {});
 }
 function stopTest() {
-  testStream?.getTracks().forEach(t => t.stop());
-  testCtx?.close();
+  releaseAudio(testStream);
+  closeAudioContext(testCtx);
   stopTestMeter?.();
   testing = false;
   testBtn.textContent = "Tester";
 }
-testBtn.onclick = () => { if (live.running || chunk.recording) return; testing ? stopTest() : startTest(); };
-deviceEl.onchange = () => { if (testing) { stopTest(); startTest(); } };
-sourceRadios.forEach(r => r.onchange = () => { updateHints(); if (testing) stopTest(); });
-navigator.mediaDevices.addEventListener("devicechange", () => refreshDevices());
+async function startCapture(action, onError) {
+  if (startingCapture) return;
+  startingCapture = true;
+  captureController = new AbortController();
+  applyLocks();
+  try { await action(); }
+  catch (error) { onError(error); }
+  finally { startingCapture = false; captureController = null; applyLocks(); }
+}
+testBtn.onclick = () => {
+  if (live.running || chunk.recording) return;
+  if (testing) stopTest();
+  else startCapture(startTest, err => setStatus("Erreur : " + err.message, true));
+};
+systemAudioEl.onchange = () => { if (testing) stopTest(); updateHints(); };
+refreshDevicesBtn.onclick = async () => {
+  if (testing) stopTest();
+  startCapture(async () => {
+    const permission = await navigator.mediaDevices.getUserMedia({ audio: true });
+    permission.getTracks().forEach(track => track.stop());
+    await refreshDevices();
+  }, err => setStatus("Accès aux micros impossible : " + err.message, true));
+};
+navigator.mediaDevices.addEventListener("devicechange", () => refreshDevices().catch(err => setStatus(err.message, true)));
 
 function updateHints() {
-  const sys = source() === "system";
-  deviceEl.style.display = sys ? "none" : "block";
-  hint.textContent = sys
-    ? "Une fenêtre de partage va s'ouvrir : choisis « Écran entier » (ou un onglet) et coche « Partager l'audio »."
-    : "La barre doit dépasser le trait blanc quand tu parles, sinon rien ne sera transcrit.";
+  hint.textContent = systemAudioEl.checked
+    ? "Pour une visio : sélectionne aussi ton micro, puis partage l’onglet ou l’écran avec « Partager l’audio ». Un casque évite de capter les interlocuteurs deux fois."
+    : "Tu peux cocher plusieurs micros ou ajouter le son de l’ordinateur. Le bouton Tester mesure le mélange.";
+  if (!navigator.mediaDevices.getDisplayMedia) hint.textContent += " Le partage du son n’est pas disponible dans ce navigateur.";
 }
 
-// ---------- réduction de bruit ----------
 function updateDenoiseUi() {
-  const eng = engines.find(e => e.id === engineEl.value);
-  const unsupported = currentPage === "live" && eng && !eng.supports_denoise;
-  denoiseEl.disabled = !denoiseAvailable || !!unsupported;
-  if (!denoiseAvailable) denoiseNote.textContent = "Indisponible : DeepFilterNet est introuvable sur le serveur.";
-  else if (unsupported) denoiseNote.textContent = "Non disponible avec ce moteur de transcription.";
-  else if (currentPage === "chunks") denoiseNote.textContent = "DeepFilterNet, appliquée à chaque audio avant sa transcription. Plus lent : compte environ la moitié de la durée de l'audio en plus.";
-  else denoiseNote.textContent = "DeepFilterNet, appliquée à la version finale de chaque phrase (celle écrite dans le fichier). L'aperçu en gris reste brut. Peut ralentir la transcription.";
+  denoiseEl.disabled = !denoiseAvailable;
+  openModalBtn.disabled = !denoiseAvailable || live.running || chunk.recording || startingCapture;
+  denoiseNote.textContent = denoiseAvailable
+    ? "DeepFilterNet est appliqué au mélange audio avant la transcription des morceaux."
+    : "Indisponible : DeepFilterNet est introuvable sur le serveur.";
 }
-function sendDenoise() {
-  if (live.ws && live.ws.readyState === 1) live.ws.send(JSON.stringify({ denoise: denoiseEl.checked }));
-}
-denoiseEl.onchange = () => { sendDenoise(); jpost("/api/settings", { denoise: denoiseEl.checked }).catch(() => {}); };
 
-// ---------- moteurs (page live) ----------
-let enginesSig = "";
-function updateEngineNote() {
-  const eng = engines.find(e => e.id === engineEl.value);
-  const parts = [];
-  if (eng && eng.note) parts.push(eng.note);
-  engines.filter(e => !e.available && e.hint).forEach(e => parts.push(e.hint));
-  engineNote.textContent = parts.join(" ");
-}
+denoiseEl.onchange = () => jpost("/api/settings", {denoise: denoiseEl.checked})
+  .catch(err => setCStatus("Réglage non enregistré : " + err.message, true));
+
 async function loadEngines() {
   try {
-    const d = await jget("/api/engines");
-    engines = d.engines; denoiseAvailable = d.deepfilter;
-  } catch { if (!engines.length) engines = [{ id: "whisper", name: "Whisper", available: true, supports_denoise: true }]; }
-  const sig = JSON.stringify(engines.map(e => [e.id, e.available]));
-  if (sig !== enginesSig) {
-    enginesSig = sig;
-    const keep = engineEl.value;
-    engineEl.innerHTML = "";
-    engines.forEach(e => {
-      const o = document.createElement("option");
-      o.value = e.id;
-      o.textContent = e.name + (e.available ? "" : " (indisponible)");
-      o.disabled = !e.available;
-      engineEl.appendChild(o);
-    });
-    const kept = engines.find(e => e.id === keep && e.available);
-    const first = kept || engines.find(e => e.available);
-    if (first) engineEl.value = first.id;
+    const data = await jget("/api/engines");
+    denoiseAvailable = data.deepfilter;
+    const kroko = data.engines.find(engine => engine.id === "sherpa");
+    krokoAvailable = !!kroko?.available;
+    engineNote.textContent = krokoAvailable ? kroko.note : (kroko?.hint || "Kroko est indisponible.");
+  } catch {
+    krokoAvailable = false;
+    engineNote.textContent = "Connexion au serveur impossible. Vérifie que CorTranscript est démarré.";
   }
-  updateEngineNote();
   updateDenoiseUi();
+  applyLocks();
 }
-engineEl.onchange = () => { updateEngineNote(); updateDenoiseUi(); };
-// un moteur peut démarrer plus tard que la page (chargement de son modèle) : on réessaie tant qu'il en manque
-setInterval(() => { if (currentPage === "live" && !live.running && engines.some(e => !e.available)) loadEngines(); }, 4000);
+setInterval(() => { if (!krokoAvailable && !live.running) loadEngines(); }, 4000);
 
 // ====================================================================
 //  PAGE 1 : LIVE
@@ -639,7 +653,7 @@ async function startLive() {
   setEditable(false); setSaveState("");
   refreshEmpty();
 
-  const ws = new WebSocket(wsUrl("/ws?engine=" + encodeURIComponent(engineEl.value)));
+  const ws = new WebSocket(wsUrl("/ws"));
   live.ws = ws;
   ws.binaryType = "arraybuffer";
   ws.onmessage = (e) => {
@@ -661,7 +675,6 @@ async function startLive() {
     if (live.running && live.ws === ws) { const hadError = statusEl.classList.contains("err"); stopLive(); if (!hadError) setStatus("Connexion au serveur interrompue.", true); }
   };
   await new Promise((res, rej) => { ws.onopen = res; ws.onerror = () => rej(new Error("connexion au serveur impossible")); });
-  sendDenoise();
 
   const rec = await openRecorder(live.stream, (buf) => { const w = live.ws; if (w && w.readyState === 1) w.send(buf); });
   live.ctx = rec.audioCtx;
@@ -675,8 +688,8 @@ async function startLive() {
 
 function stopLive() {
   const ws = live.ws; live.ws = null;
-  live.stream?.getTracks().forEach(t => t.stop());
-  live.ctx?.close();
+  releaseAudio(live.stream);
+  closeAudioContext(live.ctx);
   live.stopMeter?.();
   live.running = false;
   btn.textContent = "Démarrer"; btn.classList.remove("rec");
@@ -690,7 +703,7 @@ function stopLive() {
   } else ws?.close();
 }
 
-btn.onclick = () => live.running ? stopLive() : startLive().catch(err => {
+btn.onclick = () => live.running ? stopLive() : startCapture(startLive, err => {
   stopLive();
   setState("error", "Erreur");
   setStatus("Erreur : " + err.message, true);
@@ -774,8 +787,8 @@ function stopChunk(sendStop = true) {
   const ws = chunk.ws; chunk.ws = null;
   if (sendStop && ws && ws.readyState === 1) ws.send(JSON.stringify({ stop: true }));
   chunk.recording = false;
-  chunk.stream?.getTracks().forEach(t => t.stop());
-  chunk.ctx?.close();
+  releaseAudio(chunk.stream);
+  closeAudioContext(chunk.ctx);
   chunk.stopMeter?.();
   updateTick(SILENCE_RMS);
   if (ws) setTimeout(() => ws.close(), 400);
@@ -786,7 +799,7 @@ function stopChunk(sendStop = true) {
   setTimeout(refreshState, 1200);
 }
 
-recBtn.onclick = () => chunk.recording ? stopChunk() : startChunk().catch(err => {
+recBtn.onclick = () => chunk.recording ? stopChunk() : startCapture(startChunk, err => {
   stopChunk(false);
   setState("error", "Erreur");
   setCStatus("Erreur : " + err.message, true);
@@ -1128,8 +1141,8 @@ function mCleanup() {
   mRecording = false;
   clearInterval(mTimer);
   mStopMeter?.();
-  mStream?.getTracks().forEach(t => t.stop());
-  mCtx?.close();
+  releaseAudio(mStream);
+  closeAudioContext(mCtx);
   mrec.textContent = "Enregistrer"; mrec.classList.remove("rec");
 }
 
@@ -1174,26 +1187,26 @@ async function mStop() {
   }
 }
 
-mrec.onclick = () => mRecording ? mStop() : mStart().catch(err => { mCleanup(); mstatus.textContent = "Erreur : " + err.message; });
+mrec.onclick = () => mRecording ? mStop() : startCapture(mStart, err => { mCleanup(); mstatus.textContent = "Erreur : " + err.message; });
 
 openModalBtn.onclick = () => {
   if (live.running || chunk.recording) return;
   if (testing) stopTest();
   resetResult();
-  msource.textContent = "Source : " + (source() === "system"
-    ? "son de l'ordinateur"
-    : (deviceEl.selectedOptions[0]?.textContent || "micro par défaut"));
+  const names = [...devicesEl.querySelectorAll("input:checked")].map(input => input.closest("label").textContent);
+  if (systemAudioEl.checked) names.push("visio / son de l’ordinateur");
+  msource.textContent = "Sources : " + (names.join(" + ") || "aucune entrée sélectionnée");
   modal.showModal();
 };
 $("mclose").onclick = () => modal.close();
-modal.addEventListener("close", () => { mCleanup(); player.pause(); });
+modal.addEventListener("close", () => { captureController?.abort(); mCleanup(); player.pause(); });
 
 // ====================================================================
 //  DÉMARRAGE
 // ====================================================================
 updateHints();
 refreshEmpty();
-refreshDevices();
+refreshDevices().catch(err => setStatus("Accès aux périphériques impossible : " + err.message, true));
 loadEngines().then(() => {
   const wanted = location.hash.slice(1);
   showPage(["live", "chunks", "viewer"].includes(wanted) ? wanted : "live");

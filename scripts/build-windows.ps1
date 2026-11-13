@@ -1,10 +1,11 @@
 ﻿[CmdletBinding()]
 param(
-    [ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '1.0.0',
+    [ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '1.1.0',
     [ValidateSet('tiny', 'base', 'small', 'medium', 'large-v3')][string]$Model = 'small',
     [string]$InnoSetupCompiler = ''
 )
 $ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
 Set-StrictMode -Version Latest
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $buildRoot = Join-Path $projectRoot 'build\windows'
@@ -65,23 +66,7 @@ Invoke-Checked $buildPython @('-m', 'pip', 'install', '--upgrade', 'pip', 'pyins
 Invoke-Checked $buildPython @('-m', 'pip', 'install', '--no-warn-script-location', '--ignore-installed',
     '--target', "$bundle\runtime\Lib\site-packages", '-r', "$projectRoot\packaging\requirements-windows.txt")
 
-Write-Host '[2/7] Intégration de FFmpeg, DeepFilterNet et du runtime Microsoft.'
-# Bundle an LGPL build and its shared libraries.
-$release = Invoke-RestMethod 'https://api.github.com/repos/FFmpeg-Builds/FFmpeg-Builds/releases/tags/latest'
-$asset = $release.assets | Where-Object { $_.name -eq 'ffmpeg-master-latest-win64-lgpl-shared.zip' } | Select-Object -First 1
-if (-not $asset) { throw 'Archive FFmpeg Windows LGPL shared introuvable.' }
-$ffmpegZip = Join-Path $cache "$($release.id)-ffmpeg-lgpl-shared.zip"
-Get-Download $asset.browser_download_url $ffmpegZip
-$ffmpegExtract = Join-Path $buildRoot 'ffmpeg'
-if (Test-Path -LiteralPath $ffmpegExtract) { Remove-Item -LiteralPath $ffmpegExtract -Recurse -Force }
-Expand-Archive -LiteralPath $ffmpegZip -DestinationPath $ffmpegExtract
-$ffmpegBin = Get-ChildItem -LiteralPath $ffmpegExtract -Recurse -Filter 'ffmpeg.exe' | Select-Object -First 1
-if (-not $ffmpegBin) { throw "ffmpeg.exe absent de l'archive." }
-Copy-Item -Path (Join-Path $ffmpegBin.Directory.FullName '*') -Destination "$bundle\bin" -Recurse
-Copy-Item -LiteralPath $ffmpegBin.Directory.Parent.FullName -Destination "$bundle\licenses\ffmpeg-distribution" -Recurse
-# The duplicate binary directory is unnecessary; keep the distributor's license,
-# source/build links and documentation next to the installed runtime.
-Remove-Item -LiteralPath "$bundle\licenses\ffmpeg-distribution\bin" -Recurse -Force
+Write-Host '[2/7] Intégration de DeepFilterNet et du runtime Microsoft.'
 $deepfilter = Join-Path $cache 'deep-filter-0.5.6-x86_64-pc-windows-msvc.exe'
 Get-Download 'https://github.com/Rikorose/DeepFilterNet/releases/download/v0.5.6/deep-filter-0.5.6-x86_64-pc-windows-msvc.exe' $deepfilter
 Copy-Item -LiteralPath $deepfilter -Destination "$bundle\bin\deep-filter.exe"
@@ -90,17 +75,11 @@ Get-Download 'https://aka.ms/vs/17/release/vc_redist.x64.exe' $vcRuntime
 Copy-Item -LiteralPath $vcRuntime -Destination "$bundle\vc_redist.x64.exe"
 
 Write-Host '[3/7] Copie des seuls fichiers applicatifs (aucune donnée personnelle).'
-Copy-Item -LiteralPath "$projectRoot\app.py", "$projectRoot\index.html", "$projectRoot\packaging\windows_server.py" -Destination "$bundle\app"
+Copy-Item -LiteralPath "$projectRoot\app.py", "$projectRoot\index.html", "$projectRoot\audio-inputs.js", "$projectRoot\packaging\windows_server.py" -Destination "$bundle\app"
 Copy-Item -LiteralPath "$projectRoot\packaging\THIRD_PARTY.md" -Destination "$bundle\licenses"
 $runtimePython = Join-Path $bundle 'runtime\python.exe'
-$previousPath = $env:PATH
-try {
-    $env:PATH = "$bundle\bin;$env:PATH"
-    Write-Host '[4/7] Téléchargement et validation des modèles embarqués (cela peut être long).'
-    Invoke-Checked $runtimePython @("$projectRoot\packaging\prepare_models.py", '--bundle', $bundle, '--model', $Model)
-} finally {
-    $env:PATH = $previousPath
-}
+Write-Host '[4/7] Téléchargement et validation des modèles embarqués (cela peut être long).'
+Invoke-Checked $runtimePython @("$projectRoot\packaging\prepare_models.py", '--bundle', $bundle, '--model', $Model)
 
 Write-Host '[5/7] Création du lanceur CorTranscript.exe.'
 Invoke-Checked $buildPython @('-m', 'PyInstaller', '--noconfirm', '--clean', '--onedir', '--windowed',
@@ -110,10 +89,10 @@ Copy-Item -Path "$buildRoot\launcher\CorTranscript\*" -Destination $bundle -Recu
 # Save exact transitive dependency versions and binary provenance with each build.
 $manifest = & $buildPython -m pip list --path "$bundle\runtime\Lib\site-packages" --format=json
 if ($LASTEXITCODE -ne 0) { throw 'Impossible de créer le manifeste des dépendances.' }
-@{ version=$Version; model=$Model; python='3.11.9'; ffmpeg=$asset.browser_download_url; packages=($manifest | ConvertFrom-Json) } |
+@{ version=$Version; model=$Model; python='3.11.9'; deepfilter='0.5.6'; packages=($manifest | ConvertFrom-Json) } |
     ConvertTo-Json -Depth 6 | Set-Content -LiteralPath "$bundle\build-manifest.json" -Encoding UTF8
 
-Write-Host '[6/7] Démarrage et test des trois moteurs et de la réduction de bruit.'
+Write-Host '[6/7] Démarrage et test de Kroko et de la réduction de bruit.'
 Invoke-Checked $buildPython @("$projectRoot\packaging\launcher.py", '--smoke-test')
 
 Write-Host "[7/7] Création de l'installateur."

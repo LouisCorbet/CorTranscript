@@ -1,0 +1,8 @@
+# Moteurs CPU : Kroko pour le live, Whisper pour les morceaux.
+faster-whisper==1.2.1
+huggingface-hub>=0.34,<1
+av>=11,<16
+sherpa-onnx==2.0.1
+numpy==2.0.2
+fastapi>=0.141.1,<0.142
+uvicorn[standard]>=0.35,<0.50

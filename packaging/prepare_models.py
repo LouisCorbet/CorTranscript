@@ -16,18 +16,18 @@ def main():
     bundle = args.bundle.resolve()
     models = bundle / 'models'
     models.mkdir(parents=True, exist_ok=True)
-    os.environ['TORCH_HOME'] = str(models / 'torch')
     os.environ['HF_HOME'] = str(models / 'huggingface')
     os.environ['HF_HUB_DISABLE_SYMLINKS_WARNING'] = '1'
     from faster_whisper.utils import download_model
     model_dir = models / 'whisper'
     download_model(args.model, output_dir=str(model_dir))
-    import whisperx
-    model = whisperx.load_model(str(model_dir), 'cpu', compute_type='int8',
-                               language='fr', vad_method='silero')
+    from faster_whisper import WhisperModel
     import numpy as np
-    # Exercise the same inference API as live transcription (including VAD).
-    model.transcribe(np.zeros(16000, dtype=np.float32), batch_size=1)
+    model = WhisperModel(str(model_dir), device='cpu', compute_type='int8')
+    # Exercise the same VAD and decoder API as the chunk transcription path.
+    segments, _ = model.transcribe(np.zeros(16000, dtype=np.float32),
+                                  language='fr', vad_filter=True, word_timestamps=True, beam_size=5)
+    list(segments)
     sherpa_name = 'sherpa-onnx-streaming-zipformer-fr-kroko-2025-08-06'
     archive = models / 'sherpa.tar.bz2'
     urllib.request.urlretrieve(
@@ -51,7 +51,6 @@ def main():
                 shutil.copyfileobj(src, dst)
     archive.unlink()
     (bundle / 'config.json').write_text(json.dumps({'model': args.model, 'sherpa_model': sherpa_name}), 'utf-8')
-    subprocess.run([str(bundle / 'bin' / 'ffmpeg.exe'), '-version'], check=True)
     subprocess.run([str(bundle / 'bin' / 'deep-filter.exe'), '--help'], check=True)
 
 
