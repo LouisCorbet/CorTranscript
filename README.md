@@ -45,7 +45,7 @@ les transcriptions et audios personnels présents dans le dépôt.
 Pour changer la version ou le modèle embarqué, depuis PowerShell à la racine :
 
 ```powershell
-.\scripts\build-windows.ps1 -Version 1.0.1 -Model small
+.\build-windows.cmd -Version 1.0.1 -Model small
 ```
 
 Les choix de modèle sont `tiny`, `base`, `small` (défaut), `medium` et `large-v3`.
