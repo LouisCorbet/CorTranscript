@@ -1,0 +1,83 @@
+name: Windows installer
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Installer version
+        default: '1.0.0'
+        required: true
+      model:
+        description: Whisper model to bundle
+        type: choice
+        options: [tiny, base, small, medium, large-v3]
+        default: small
+  push:
+    branches: [main]
+    paths:
+      - 'app.py'
+      - 'index.html'
+      - 'packaging/**'
+      - 'scripts/build-windows.ps1'
+      - '.github/workflows/windows-installer.yml'
+  pull_request:
+    paths:
+      - 'app.py'
+      - 'index.html'
+      - 'packaging/**'
+      - 'scripts/build-windows.ps1'
+      - '.github/workflows/windows-installer.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          architecture: x64
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --yes --no-progress
+      - name: Test packaging utilities
+        run: python -m unittest discover -s tests -v
+      - name: Build and check installer
+        shell: pwsh
+        env:
+          BUILD_VERSION: ${{ inputs.version || '1.0.0' }}
+          BUILD_MODEL: ${{ inputs.model || 'small' }}
+        run: ./scripts/build-windows.ps1 -Version $env:BUILD_VERSION -Model $env:BUILD_MODEL
+      - name: Test installation without Python or Docker on PATH
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem dist/CorTranscript-Setup-*.exe | Select-Object -First 1
+          $installDir = Join-Path $env:RUNNER_TEMP 'CorTranscript installé'
+          $install = Start-Process -FilePath $installer.FullName -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=`"$installDir`"") -Wait -PassThru
+          if ($install.ExitCode -notin @(0, 3010)) { throw "Installer exited $($install.ExitCode)" }
+          $oldPath = $env:PATH
+          try {
+            $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
+            # Use the frozen executable so this check also verifies the launcher
+            # and all paths after relocation into the actual installation.
+            $check = Start-Process -FilePath "$installDir\CorTranscript.exe" -ArgumentList '--smoke-test' -Wait -PassThru
+            if ($check.ExitCode -ne 0) { throw "Installed runtime check failed ($($check.ExitCode))" }
+          } finally { $env:PATH = $oldPath }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CorTranscript-Windows
+          path: dist/CorTranscript-Setup-*.exe
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: CorTranscript-build-diagnostics
+          path: |
+            ${{ runner.temp }}/CorTranscript-smoke.log
+            build/windows/CorTranscript/build-manifest.json
+            build/windows/pyinstaller/**/warn-*.txt

@@ -1,0 +1,13 @@
+# Python 3.11 x64. CPU only: no CUDA installation required on the recipient's PC.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.8.0+cpu
+torchaudio==2.8.0+cpu
+whisperx==3.7.4
+pyannote-audio==3.3.2
+numpy==2.0.2
+whisperlivekit==0.2.26
+sherpa-onnx==2.0.1
+transformers==4.57.6
+fastapi>=0.141.1,<0.142
+uvicorn[standard]>=0.35,<0.50
+websockets>=15,<17

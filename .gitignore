@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+.env
+.venv*/
+build/
+dist/
+.packaging-cache/
+audio/
+transcriptions/
+*.spec

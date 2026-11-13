@@ -27,6 +27,7 @@ MODEL = os.getenv("WHISPER_MODEL", "small")
 LANG = os.getenv("WHISPER_LANGUAGE", "fr")
 DEVICE = os.getenv("WHISPER_DEVICE", "cpu")
 COMPUTE = os.getenv("WHISPER_COMPUTE_TYPE", "int8")
+APP_DIR = Path(__file__).resolve().parent
 BEAM_CHUNKS = int(os.getenv("WHISPER_BEAM_CHUNKS", "5"))  # qualité du mode « par morceaux »
 
 AUDIO_DIR = Path(os.getenv("AUDIO_DIR", "/audio"))
@@ -420,7 +421,7 @@ def _sherpa_flush(stream) -> str:
 async def live_sherpa(ws, doc: LiveDoc):
     """Vrai streaming : le texte se met à jour en continu, une phrase est figée à la première pause."""
     if sherpa_rec is None:
-        await ws.send_json({"type": "error", "text": "modèle de streaming introuvable (reconstruis l'image : docker compose build)"})
+        await ws.send_json({"type": "error", "text": "Modèle de streaming introuvable. Réinstalle CorTranscript ou reconstruis son image Docker."})
         return
     loop = asyncio.get_running_loop()
     stream = sherpa_rec.create_stream()
@@ -567,7 +568,7 @@ async def lifespan(_app: FastAPI):
 
 
 load_sherpa()
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(title="CorTranscript", lifespan=lifespan)
 
 
 @app.websocket("/ws/record")
@@ -841,12 +842,12 @@ async def api_engines():
                 "id": "sherpa", "name": sherpa_name(), "available": sherpa_rec is not None, "supports_denoise": False,
                 "note": "Vrai streaming : le texte s'écrit en continu pendant que tu parles. Modèle léger, moins précis que Whisper."
                         + (" Le modèle Kroko est sous licence non commerciale." if "kroko" in (SHERPA_MODEL or "kroko").lower() else ""),
-                "hint": "Le modèle de streaming est introuvable : reconstruis l'image avec « docker compose build ».",
+                "hint": "Le modèle de streaming est introuvable : réinstalle CorTranscript ou reconstruis son image Docker.",
             },
             {
                 "id": "whisperlivekit", "name": "WhisperLiveKit", "available": wlk_ok, "supports_denoise": False,
                 "note": "Whisper en pseudo-streaming (fenêtres glissantes) : les mots se figent avec quelques secondes de retard.",
-                "hint": "WhisperLiveKit n'est pas encore prêt (il charge son modèle au démarrage) : patiente un moment ou vérifie « docker compose logs wlk ».",
+                "hint": "WhisperLiveKit n'est pas encore prêt (il charge son modèle au démarrage) : patiente un moment ou consulte les journaux de CorTranscript.",
             },
         ],
     }
@@ -909,6 +910,11 @@ async def denoise_endpoint(request: Request):
     return Response(out, media_type="audio/wav")
 
 
+@app.get("/api/health")
+async def health():
+    return {"application": "CorTranscript", "status": "ready"}
+
+
 @app.get("/")
 async def index():
-    return FileResponse("index.html")
+    return FileResponse(APP_DIR / "index.html")
